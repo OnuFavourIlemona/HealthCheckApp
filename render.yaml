@@ -10,7 +10,7 @@ services:
     dockerfilePath: ./Dockerfile
     # Frankfurt is Render's closest region to Nigeria.
     region: frankfurt
-    plan: starter
+    plan: free
     # Render pings this to confirm the container is healthy before routing.
     healthCheckPath: /v1/health
     autoDeploy: true

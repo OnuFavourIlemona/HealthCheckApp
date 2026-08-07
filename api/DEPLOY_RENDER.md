@@ -76,9 +76,14 @@ already at the repo root.
 
 ## Notes
 
-- **The `starter` plan does not sleep**, so no cold starts. The free plan
-  does spin down after ~15 min idle (first request then takes ~30s) — fine
-  for testing, upgrade to `starter` before real users.
+- **The `free` plan spins down after ~15 min idle.** The first request after
+  it sleeps takes ~30-50s to wake the container. Because the app's prediction
+  call times out at 8s and falls back to the local heuristic, a cold first
+  assessment quietly uses the heuristic; once the service is warm, real model
+  predictions kick in. To keep it awake for free, point a free uptime pinger
+  (e.g. UptimeRobot or cron-job.org) at `/v1/health` every 10 minutes.
+  Upgrade to `starter` ($7/mo, always-on) before real users if you want every
+  prediction to hit the model.
 - **Weekly model refresh**: replace the `*_model.json` files under
   `api/models/`, commit, and push. Render auto-redeploys (`autoDeploy: true`).
 - **Scaling**: raise the instance count / plan in the Render dashboard as
