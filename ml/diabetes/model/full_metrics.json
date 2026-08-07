@@ -1,0 +1,66 @@
+{
+  "metrics": {
+    "n_train": 80000,
+    "n_test": 20000,
+    "accuracy": 0.90895,
+    "precision": 0.4813674160763782,
+    "recall": 0.9194117647058824,
+    "f1": 0.6318981200727714,
+    "roc_auc": 0.9796672934747669,
+    "pr_auc": 0.8867503471697095,
+    "confusion_matrix": [
+      [
+        16616,
+        1684
+      ],
+      [
+        137,
+        1563
+      ]
+    ]
+  },
+  "shap_importance": [
+    [
+      "HbA1c_level",
+      3.246868133544922
+    ],
+    [
+      "blood_glucose_level",
+      2.4795572757720947
+    ],
+    [
+      "age",
+      0.830794095993042
+    ],
+    [
+      "bmi",
+      0.4293056130409241
+    ],
+    [
+      "smoking_code",
+      0.2011387050151825
+    ],
+    [
+      "gender_code",
+      0.14694397151470184
+    ],
+    [
+      "hypertension",
+      0.11640947312116623
+    ],
+    [
+      "heart_disease",
+      0.08341921120882034
+    ]
+  ],
+  "features": [
+    "age",
+    "gender_code",
+    "hypertension",
+    "heart_disease",
+    "smoking_code",
+    "bmi",
+    "HbA1c_level",
+    "blood_glucose_level"
+  ]
+}

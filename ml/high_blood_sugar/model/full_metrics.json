@@ -1,0 +1,56 @@
+{
+  "metrics": {
+    "n_train": 80000,
+    "n_test": 20000,
+    "accuracy": 0.51165,
+    "precision": 0.9162904808635918,
+    "recall": 0.5115884061147334,
+    "f1": 0.656587321120917,
+    "roc_auc": 0.5242985972964067,
+    "pr_auc": 0.9212804707872313,
+    "confusion_matrix": [
+      [
+        896,
+        853
+      ],
+      [
+        8914,
+        9337
+      ]
+    ]
+  },
+  "shap_importance": [
+    [
+      "bmi",
+      0.11031896620988846
+    ],
+    [
+      "age",
+      0.10314818471670151
+    ],
+    [
+      "smoking_code",
+      0.04877668246626854
+    ],
+    [
+      "hypertension",
+      0.03740232437849045
+    ],
+    [
+      "gender_code",
+      0.03589748218655586
+    ],
+    [
+      "heart_disease",
+      0.004702497273683548
+    ]
+  ],
+  "features": [
+    "age",
+    "gender_code",
+    "hypertension",
+    "heart_disease",
+    "smoking_code",
+    "bmi"
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "HealthCheckApp",
+    "name": "HealthCheck",
     "slug": "HealthCheckApp",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -20,6 +20,15 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "HealthCheck uses your location to find hospitals and pharmacies near you."
+        }
+      ]
+    ]
   }
 }

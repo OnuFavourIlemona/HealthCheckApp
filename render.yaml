@@ -1,0 +1,23 @@
+# Render Blueprint for the HealthCheck risk-prediction API.
+# Deploys the Docker service in ./api. See api/DEPLOY_RENDER.md for the
+# full walkthrough.
+services:
+  - type: web
+    name: healthcheck-api
+    runtime: docker
+    # Build context and Dockerfile both live in the api/ folder.
+    rootDir: api
+    dockerfilePath: ./Dockerfile
+    # Frankfurt is Render's closest region to Nigeria.
+    region: frankfurt
+    plan: starter
+    # Render pings this to confirm the container is healthy before routing.
+    healthCheckPath: /v1/health
+    autoDeploy: true
+    envVars:
+      # The shared secret the app sends as X-API-Key. Set to sync:false so it
+      # is NOT stored in this committed file — you paste it into the Render
+      # dashboard once. It must match EXPO_PUBLIC_PREDICTION_API_KEY in the
+      # app's .env.
+      - key: PREDICTION_API_KEY
+        sync: false

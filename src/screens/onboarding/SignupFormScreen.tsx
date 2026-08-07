@@ -1,0 +1,176 @@
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useState } from 'react';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { AuthHeader } from '../../components/forms/AuthHeader';
+import { FormField } from '../../components/forms/FormField';
+import { ProceedButton } from '../../components/forms/ProceedButton';
+import { PatternBackground } from '../../components/ui/PatternBackground';
+import { signUpWithRole, type UserRole } from '../../lib/supabase';
+import type { RootStackParamList } from '../../navigation/types';
+import { colors, fonts } from '../../theme';
+
+export type SignupField = {
+  key: string;
+  label: string;
+  placeholder: string;
+  helperText?: string;
+  secureTextEntry?: boolean;
+  keyboardType?: 'default' | 'email-address';
+};
+
+type Props = {
+  title: string;
+  subtitle: string;
+  fields: SignupField[];
+  role: UserRole;
+  /** Which field key holds the person/company name to store on the profile. */
+  nameFieldKey: string;
+  onBack: () => void;
+  onProceed: () => void;
+};
+
+export function SignupFormScreen({ title, subtitle, fields, role, nameFieldKey, onBack, onProceed }: Props) {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const setValue = (key: string, value: string) => {
+    setValues((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleProceed = async () => {
+    if (submitting) return;
+    setError(null);
+
+    const email = values.email?.trim() ?? '';
+    const password = values.password ?? '';
+    const confirmPassword = values.confirmPassword ?? '';
+    const fullName = values[nameFieldKey]?.trim() ?? '';
+
+    if (!fullName) {
+      setError('Please fill in your name.');
+      return;
+    }
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least eight(8) characters long.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    setSubmitting(true);
+    const { data, error: signUpError } = await signUpWithRole({ email, password, fullName, role });
+    setSubmitting(false);
+
+    if (signUpError) {
+      setError(signUpError.message);
+      return;
+    }
+    // No session back means the project requires email confirmation before
+    // sign-in — send them to wait for it instead of straight into the app.
+    if (!data.session) {
+      navigation.navigate('CheckEmail', { email });
+      return;
+    }
+    onProceed();
+  };
+
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <PatternBackground height={380} />
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <AuthHeader onBack={onBack} />
+
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.subtitle}>{subtitle}</Text>
+
+          {fields.map((field) => (
+            <FormField
+              key={field.key}
+              label={field.label}
+              placeholder={field.placeholder}
+              helperText={field.helperText}
+              secureTextEntry={field.secureTextEntry}
+              keyboardType={field.keyboardType}
+              autoCapitalize={field.keyboardType === 'email-address' ? 'none' : 'words'}
+              value={values[field.key] ?? ''}
+              onChangeText={(text) => setValue(field.key, text)}
+            />
+          ))}
+
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+          {submitting ? (
+            <ActivityIndicator size="large" color={colors.primaryGreen} style={styles.spinner} />
+          ) : (
+            <ProceedButton onPress={handleProceed} />
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.white,
+  },
+  flex: {
+    flex: 1,
+  },
+  content: {
+    paddingHorizontal: 24,
+    paddingBottom: 32,
+  },
+  // Real values from Figma inspector: title is Poppins SemiBold 18/28, not 22.
+  title: {
+    fontFamily: fonts.headingSemiBold,
+    fontSize: 18,
+    lineHeight: 28,
+    color: colors.textPrimary,
+    marginTop: 28,
+  },
+  subtitle: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 15,
+    color: colors.textSecondary,
+    marginTop: 8,
+    marginBottom: 28,
+    lineHeight: 21,
+  },
+  errorText: {
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 13.5,
+    color: colors.danger,
+    marginBottom: 14,
+    textAlign: 'center',
+  },
+  spinner: {
+    height: 64,
+  },
+});

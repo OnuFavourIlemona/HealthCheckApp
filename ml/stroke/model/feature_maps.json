@@ -1,0 +1,29 @@
+{
+  "gender_map": {
+    "Female": 0,
+    "Male": 1,
+    "Other": 2
+  },
+  "smoking_map": {
+    "Unknown": 0,
+    "never smoked": 1,
+    "formerly smoked": 2,
+    "smokes": 3
+  },
+  "full_features": [
+    "age",
+    "gender_code",
+    "hypertension",
+    "heart_disease",
+    "avg_glucose_level",
+    "bmi",
+    "smoking_code"
+  ],
+  "core_features": [
+    "age",
+    "gender_code",
+    "hypertension",
+    "bmi",
+    "smoking_code"
+  ]
+}

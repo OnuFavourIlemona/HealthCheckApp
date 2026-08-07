@@ -1,0 +1,31 @@
+{
+  "exercise_map": {
+    "Low": 0,
+    "Moderate": 1,
+    "High": 2
+  },
+  "yes_no_map": {
+    "No": 0,
+    "Yes": 1
+  },
+  "smoking_map": {
+    "Non-Smoker": 0,
+    "Smoker": 1
+  },
+  "full_features": [
+    "Age",
+    "Salt_Intake",
+    "Stress_Score",
+    "Sleep_Duration",
+    "BMI",
+    "Family_History_code",
+    "Exercise_Level_code",
+    "Smoking_Status_code"
+  ],
+  "core_features": [
+    "Age",
+    "BMI",
+    "Sleep_Duration",
+    "Smoking_Status_code"
+  ]
+}

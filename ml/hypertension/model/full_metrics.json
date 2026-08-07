@@ -1,0 +1,66 @@
+{
+  "metrics": {
+    "n_train": 1588,
+    "n_test": 397,
+    "accuracy": 0.7657430730478589,
+    "precision": 0.775609756097561,
+    "recall": 0.7718446601941747,
+    "f1": 0.7737226277372263,
+    "roc_auc": 0.8651197072129314,
+    "pr_auc": 0.9033854551333352,
+    "confusion_matrix": [
+      [
+        145,
+        46
+      ],
+      [
+        47,
+        159
+      ]
+    ]
+  },
+  "shap_importance": [
+    [
+      "Age",
+      0.9786903262138367
+    ],
+    [
+      "Family_History_code",
+      0.9226292371749878
+    ],
+    [
+      "Smoking_Status_code",
+      0.7999029755592346
+    ],
+    [
+      "Stress_Score",
+      0.7166421413421631
+    ],
+    [
+      "BMI",
+      0.6791937351226807
+    ],
+    [
+      "Sleep_Duration",
+      0.5412175059318542
+    ],
+    [
+      "Salt_Intake",
+      0.5299156308174133
+    ],
+    [
+      "Exercise_Level_code",
+      0.07803082466125488
+    ]
+  ],
+  "features": [
+    "Age",
+    "Salt_Intake",
+    "Stress_Score",
+    "Sleep_Duration",
+    "BMI",
+    "Family_History_code",
+    "Exercise_Level_code",
+    "Smoking_Status_code"
+  ]
+}

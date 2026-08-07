@@ -1,0 +1,46 @@
+{
+  "metrics": {
+    "n_train": 1588,
+    "n_test": 397,
+    "accuracy": 0.6775818639798489,
+    "precision": 0.6875,
+    "recall": 0.6941747572815534,
+    "f1": 0.6908212560386473,
+    "roc_auc": 0.7479794642403294,
+    "pr_auc": 0.7762106369011956,
+    "confusion_matrix": [
+      [
+        126,
+        65
+      ],
+      [
+        63,
+        143
+      ]
+    ]
+  },
+  "shap_importance": [
+    [
+      "Age",
+      0.6592856645584106
+    ],
+    [
+      "BMI",
+      0.6393243074417114
+    ],
+    [
+      "Smoking_Status_code",
+      0.6379802227020264
+    ],
+    [
+      "Sleep_Duration",
+      0.4999465346336365
+    ]
+  ],
+  "features": [
+    "Age",
+    "BMI",
+    "Sleep_Duration",
+    "Smoking_Status_code"
+  ]
+}

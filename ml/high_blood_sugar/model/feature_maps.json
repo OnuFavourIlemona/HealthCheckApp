@@ -1,0 +1,31 @@
+{
+  "gender_map": {
+    "Female": 0,
+    "Male": 1,
+    "Other": 2
+  },
+  "smoking_map": {
+    "No Info": 0,
+    "never": 1,
+    "former": 2,
+    "not current": 3,
+    "ever": 4,
+    "current": 5
+  },
+  "full_features": [
+    "age",
+    "gender_code",
+    "hypertension",
+    "heart_disease",
+    "smoking_code",
+    "bmi"
+  ],
+  "core_features": [
+    "age",
+    "gender_code",
+    "bmi",
+    "hypertension"
+  ],
+  "hba1c_threshold": 5.7,
+  "glucose_threshold": 100
+}

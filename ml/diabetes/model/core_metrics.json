@@ -1,0 +1,51 @@
+{
+  "metrics": {
+    "n_train": 80000,
+    "n_test": 20000,
+    "accuracy": 0.81825,
+    "precision": 0.3036330424193221,
+    "recall": 0.88,
+    "f1": 0.45148634374528446,
+    "roc_auc": 0.9333964480874317,
+    "pr_auc": 0.7030484940720994,
+    "confusion_matrix": [
+      [
+        14869,
+        3431
+      ],
+      [
+        204,
+        1496
+      ]
+    ]
+  },
+  "shap_importance": [
+    [
+      "blood_glucose_level",
+      3.1588528156280518
+    ],
+    [
+      "age",
+      1.138331413269043
+    ],
+    [
+      "bmi",
+      0.46723368763923645
+    ],
+    [
+      "gender_code",
+      0.15787255764007568
+    ],
+    [
+      "hypertension",
+      0.1330890953540802
+    ]
+  ],
+  "features": [
+    "age",
+    "gender_code",
+    "bmi",
+    "blood_glucose_level",
+    "hypertension"
+  ]
+}
