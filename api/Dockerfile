@@ -8,7 +8,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Upgrade pip first: the base image's pip is too old to recognise the newer
+# manylinux wheel tags xgboost 3.x publishes, which otherwise fails with
+# "No matching distribution found" even though the wheel exists.
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
 COPY main.py inference.py ./
 COPY models/ ./models/
