@@ -18,6 +18,8 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
+      "softwareKeyboardLayoutMode": "pan",
+      "edgeToEdgeEnabled": true,
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
@@ -28,10 +30,31 @@
     },
     "plugins": [
       "expo-font",
+      "expo-navigation-bar",
       [
         "expo-location",
         {
           "locationWhenInUsePermission": "HealthCheck uses your location to find hospitals and pharmacies near you."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "HealthCheck needs access to your photos so you can set a profile picture."
+        }
+      ],
+      "@react-native-community/datetimepicker",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#0E8F2F"
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "HealthCheck needs your microphone to record voice notes for ProConnect."
         }
       ]
     ],

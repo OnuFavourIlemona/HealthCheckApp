@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, fonts } from '../theme';
 
 type Props = {
@@ -8,49 +9,32 @@ type Props = {
   dayLabel: string;
   submitting: boolean;
   error: string | null;
-  onSubmit: (title: string, hour12: number, minute: number, ampm: 'AM' | 'PM', notes: string) => void;
+  onSubmit: (title: string, hour24: number, minute: number, notes: string) => void;
   onDismiss: () => void;
 };
 
-const MINUTE_STEPS = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+function defaultTime(): Date {
+  const d = new Date();
+  d.setHours(9, 0, 0, 0);
+  return d;
+}
 
-function Stepper({
-  value,
-  onDecrease,
-  onIncrease,
-  formatValue,
-}: {
-  value: number;
-  onDecrease: () => void;
-  onIncrease: () => void;
-  formatValue: (v: number) => string;
-}) {
-  return (
-    <View style={styles.stepper}>
-      <Pressable style={styles.stepperButton} onPress={onDecrease} hitSlop={8}>
-        <Ionicons name="chevron-down" size={18} color={colors.darkAccentGreen} />
-      </Pressable>
-      <Text style={styles.stepperValue}>{formatValue(value)}</Text>
-      <Pressable style={styles.stepperButton} onPress={onIncrease} hitSlop={8}>
-        <Ionicons name="chevron-up" size={18} color={colors.darkAccentGreen} />
-      </Pressable>
-    </View>
-  );
+function formatTime(d: Date): string {
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 export function AddReminderSheet({ visible, dayLabel, submitting, error, onSubmit, onDismiss }: Props) {
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
-  const [hour12, setHour12] = useState(9);
-  const [minuteIndex, setMinuteIndex] = useState(0);
-  const [ampm, setAmpm] = useState<'AM' | 'PM'>('AM');
+  const [time, setTime] = useState<Date>(defaultTime());
+  // On Android the picker is a dialog we open on demand; on iOS it sits inline.
+  const [pickerOpen, setPickerOpen] = useState(Platform.OS === 'ios');
 
   const reset = () => {
     setTitle('');
     setNotes('');
-    setHour12(9);
-    setMinuteIndex(0);
-    setAmpm('AM');
+    setTime(defaultTime());
+    setPickerOpen(Platform.OS === 'ios');
   };
 
   return (
@@ -69,35 +53,27 @@ export function AddReminderSheet({ visible, dayLabel, submitting, error, onSubmi
             onChangeText={setTitle}
           />
 
-          <View style={styles.timeRow}>
-            <Stepper
-              value={hour12}
-              formatValue={(v) => String(v)}
-              onDecrease={() => setHour12((h) => (h === 1 ? 12 : h - 1))}
-              onIncrease={() => setHour12((h) => (h === 12 ? 1 : h + 1))}
-            />
-            <Text style={styles.timeColon}>:</Text>
-            <Stepper
-              value={MINUTE_STEPS[minuteIndex]}
-              formatValue={(v) => String(v).padStart(2, '0')}
-              onDecrease={() => setMinuteIndex((i) => (i === 0 ? MINUTE_STEPS.length - 1 : i - 1))}
-              onIncrease={() => setMinuteIndex((i) => (i === MINUTE_STEPS.length - 1 ? 0 : i + 1))}
-            />
-            <View style={styles.ampmToggle}>
-              <Pressable
-                style={[styles.ampmButton, ampm === 'AM' && styles.ampmButtonActive]}
-                onPress={() => setAmpm('AM')}
-              >
-                <Text style={[styles.ampmText, ampm === 'AM' && styles.ampmTextActive]}>AM</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.ampmButton, ampm === 'PM' && styles.ampmButtonActive]}
-                onPress={() => setAmpm('PM')}
-              >
-                <Text style={[styles.ampmText, ampm === 'PM' && styles.ampmTextActive]}>PM</Text>
-              </Pressable>
+          <Text style={styles.timeLabel}>Time</Text>
+          {Platform.OS === 'android' ? (
+            <Pressable style={styles.timeButton} onPress={() => setPickerOpen(true)}>
+              <Ionicons name="time-outline" size={18} color={colors.darkAccentGreen} />
+              <Text style={styles.timeButtonText}>{formatTime(time)}</Text>
+            </Pressable>
+          ) : null}
+
+          {pickerOpen ? (
+            <View style={styles.pickerWrap}>
+              <DateTimePicker
+                value={time}
+                mode="time"
+                display="spinner"
+                onChange={(_event, selected) => {
+                  if (Platform.OS === 'android') setPickerOpen(false);
+                  if (selected) setTime(selected);
+                }}
+              />
             </View>
-          </View>
+          ) : null}
 
           <TextInput
             style={[styles.input, styles.notesInput]}
@@ -119,7 +95,7 @@ export function AddReminderSheet({ visible, dayLabel, submitting, error, onSubmi
               style={[styles.submitButton, !title.trim() && styles.submitButtonDisabled]}
               disabled={!title.trim()}
               onPress={() => {
-                onSubmit(title.trim(), hour12, MINUTE_STEPS[minuteIndex], ampm, notes.trim());
+                onSubmit(title.trim(), time.getHours(), time.getMinutes(), notes.trim());
                 reset();
               }}
             >
@@ -192,58 +168,30 @@ const styles = StyleSheet.create({
   notesInput: {
     minHeight: 64,
   },
-  timeRow: {
+  timeLabel: {
+    fontFamily: fonts.headingMedium,
+    fontSize: 14,
+    color: colors.textPrimary,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  timeButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    marginTop: 18,
-  },
-  stepper: {
-    alignItems: 'center',
-    backgroundColor: colors.pillGreenBg,
-    borderRadius: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-  },
-  stepperButton: {
-    padding: 2,
-  },
-  stepperValue: {
-    fontFamily: fonts.headingSemiBold,
-    fontSize: 20,
-    color: colors.textPrimary,
-    marginVertical: 2,
-    minWidth: 32,
-    textAlign: 'center',
-  },
-  timeColon: {
-    fontFamily: fonts.headingSemiBold,
-    fontSize: 20,
-    color: colors.textPrimary,
-  },
-  ampmToggle: {
-    marginLeft: 8,
-    borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
-    overflow: 'hidden',
+    borderRadius: 12,
+    paddingVertical: 12,
   },
-  ampmButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: colors.white,
+  timeButtonText: {
+    fontFamily: fonts.headingSemiBold,
+    fontSize: 16,
+    color: colors.textPrimary,
   },
-  ampmButtonActive: {
-    backgroundColor: colors.primaryGreen,
-  },
-  ampmText: {
-    fontFamily: fonts.bodySemiBold,
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  ampmTextActive: {
-    color: colors.white,
+  pickerWrap: {
+    alignItems: 'center',
   },
   errorText: {
     fontFamily: fonts.bodySemiBold,

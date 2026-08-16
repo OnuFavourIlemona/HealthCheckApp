@@ -4,7 +4,10 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FormField } from '../components/forms/FormField';
+import { Avatar } from '../components/ui/Avatar';
 import { PatternBackground } from '../components/ui/PatternBackground';
+import { pickAndUploadAvatar } from '../lib/avatar';
+import { friendlyError } from '../lib/errors';
 import { supabase } from '../lib/supabase';
 import type { RootStackParamList } from '../navigation/types';
 import { colors, fonts } from '../theme';
@@ -15,6 +18,9 @@ export function EditProfileScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ kind: 'error' | 'success'; text: string } | null>(null);
 
@@ -26,18 +32,36 @@ export function EditProfileScreen({ navigation }: Props) {
         setLoading(false);
         return;
       }
+      setEmail(sessionData.session?.user.email ?? null);
       const { data } = await supabase
         .from('profiles')
-        .select('full_name, phone')
+        .select('full_name, phone, avatar_url')
         .eq('id', userId)
         .maybeSingle();
       if (data) {
         setFullName(data.full_name ?? '');
         setPhone(data.phone ?? '');
+        setAvatarUrl(data.avatar_url ?? null);
       }
       setLoading(false);
     })();
   }, []);
+
+  const handlePickPhoto = async () => {
+    if (uploadingPhoto) return;
+    setMessage(null);
+    setUploadingPhoto(true);
+    const { url, error } = await pickAndUploadAvatar();
+    setUploadingPhoto(false);
+    if (error) {
+      setMessage({ kind: 'error', text: friendlyError(error) });
+      return;
+    }
+    if (url) {
+      setAvatarUrl(url);
+      setMessage({ kind: 'success', text: 'Photo updated.' });
+    }
+  };
 
   const handleSave = async () => {
     if (saving) return;
@@ -64,7 +88,7 @@ export function EditProfileScreen({ navigation }: Props) {
     setSaving(false);
 
     if (error) {
-      setMessage({ kind: 'error', text: error.message });
+      setMessage({ kind: 'error', text: friendlyError(error) });
       return;
     }
     setMessage({ kind: 'success', text: 'Profile updated.' });
@@ -82,7 +106,7 @@ export function EditProfileScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <PatternBackground height={380} />
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.header}>
             <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
@@ -90,6 +114,19 @@ export function EditProfileScreen({ navigation }: Props) {
             </Pressable>
             <Text style={styles.headerTitle}>Edit Profile</Text>
             <View style={{ width: 24 }} />
+          </View>
+
+          <View style={styles.photoBlock}>
+            <Avatar email={email} name={fullName} avatarUrl={avatarUrl} size={96} />
+            <Pressable style={styles.photoButton} onPress={handlePickPhoto} disabled={uploadingPhoto}>
+              {uploadingPhoto ? (
+                <ActivityIndicator size="small" color={colors.darkAccentGreen} />
+              ) : (
+                <Text style={styles.photoButtonText}>
+                  {avatarUrl ? 'Change photo' : 'Add photo'}
+                </Text>
+              )}
+            </Pressable>
           </View>
 
           <FormField label="Full name" placeholder="e.g. Amaka Okafor" value={fullName} onChangeText={setFullName} />
@@ -134,6 +171,22 @@ const styles = StyleSheet.create({
     fontFamily: fonts.headingSemiBold,
     fontSize: 17,
     color: colors.textPrimary,
+  },
+  photoBlock: {
+    alignItems: 'center',
+    marginBottom: 24,
+    gap: 10,
+  },
+  photoButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: colors.pillGreenBg,
+  },
+  photoButtonText: {
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 13.5,
+    color: colors.darkAccentGreen,
   },
   errorText: {
     fontFamily: fonts.bodySemiBold,

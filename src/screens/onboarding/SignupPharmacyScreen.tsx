@@ -8,13 +8,13 @@ const fields: SignupField[] = [
   {
     key: 'pharmacyName',
     label: 'Name of Pharmacy',
-    placeholder: 'Benjamin Idahosa',
+    placeholder: 'e.g. HealthPlus Pharmacy',
     helperText: "Please make sure you use the name on the company's licence.",
   },
   {
     key: 'branch',
     label: 'Branch',
-    placeholder: 'Bauchi branch',
+    placeholder: 'e.g. Wuse 2, Abuja',
     helperText: 'Please include the location of the pharmacy',
   },
   { key: 'email', label: 'Email', placeholder: 'Bhosa@gmail.com', keyboardType: 'email-address' },

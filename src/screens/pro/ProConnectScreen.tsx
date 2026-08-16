@@ -1,8 +1,18 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import {
+  requestRecordingPermissionsAsync,
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  useAudioRecorder,
+  useAudioRecorderState,
+} from 'expo-audio';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -13,14 +23,21 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { PersonInfoSheet } from '../../components/PersonInfoSheet';
 import { RateConsultationSheet } from '../../components/RateConsultationSheet';
+import { Avatar } from '../../components/ui/Avatar';
 import { PatternBackground } from '../../components/ui/PatternBackground';
 import { type HealthProfile } from '../../lib/dashboard';
 import {
   completeConsultation,
+  editMessage,
   fetchMessages,
   fetchRating,
+  sendAudioMessage,
+  sendImageMessage,
   sendMessage,
+  signedChatAudioUrl,
+  signedChatImageUrl,
   submitRating,
   subscribeToMessages,
   type Consultation,
@@ -35,7 +52,9 @@ type PractitionerProfile = {
   full_name: string | null;
   specialty: string | null;
   years_of_experience: number | null;
+  age: number | null;
   is_verified: boolean | null;
+  avatar_url: string | null;
 };
 
 type RatingSummary = { average: number; count: number };
@@ -47,15 +66,85 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function initialsOf(name: string | null): string {
-  if (!name) return '?';
-  return name
-    .split(/\s+/)
-    .map((part) => part[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join('')
-    .toUpperCase();
+function formatDuration(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.round(totalSeconds));
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+/** Resolves a private chat-image path to a temporary signed URL and shows it. */
+function ChatImage({ path }: { path: string }) {
+  const [uri, setUri] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    signedChatImageUrl(path).then((url) => {
+      if (active) setUri(url);
+    });
+    return () => {
+      active = false;
+    };
+  }, [path]);
+
+  if (!uri) {
+    return (
+      <View style={styles.chatImagePlaceholder}>
+        <ActivityIndicator size="small" color={colors.primaryGreen} />
+      </View>
+    );
+  }
+  return <Image source={{ uri }} style={styles.chatImage} resizeMode="cover" />;
+}
+
+/** Resolves a private chat-audio path to a temporary URL and plays it as a voice note. */
+function AudioBubble({
+  path,
+  mine,
+  savedDuration,
+}: {
+  path: string;
+  mine: boolean;
+  savedDuration: number | null;
+}) {
+  const [uri, setUri] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    signedChatAudioUrl(path).then((url) => {
+      if (active) setUri(url);
+    });
+    return () => {
+      active = false;
+    };
+  }, [path]);
+
+  const player = useAudioPlayer(uri ?? undefined);
+  const status = useAudioPlayerStatus(player);
+
+  const toggle = () => {
+    if (!uri) return;
+    if (status.playing) player.pause();
+    else player.play();
+  };
+
+  const total = status.duration || savedDuration || 0;
+  const progress = total > 0 ? Math.min(1, status.currentTime / total) : 0;
+  const iconColor = mine ? colors.darkAccentGreen : colors.textSecondary;
+
+  return (
+    <Pressable style={styles.audioRow} onPress={toggle} disabled={!uri} hitSlop={6}>
+      <View style={styles.audioPlayCircle}>
+        {!uri ? (
+          <ActivityIndicator size="small" color={iconColor} />
+        ) : (
+          <Ionicons name={status.playing ? 'pause' : 'play'} size={16} color={iconColor} />
+        )}
+      </View>
+      <View style={styles.audioTrack}>
+        <View style={[styles.audioTrackFill, { width: `${progress * 100}%` }]} />
+      </View>
+      <Text style={styles.audioDuration}>{formatDuration(total)}</Text>
+    </Pressable>
+  );
 }
 
 export function ProConnectScreen({ navigation, route }: Props) {
@@ -67,6 +156,13 @@ export function ProConnectScreen({ navigation, route }: Props) {
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [sendingImage, setSendingImage] = useState(false);
+  const [sendingAudio, setSendingAudio] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(audioRecorder);
   const [ending, setEnding] = useState(false);
   const [hasRated, setHasRated] = useState(false);
   const [ratingVisible, setRatingVisible] = useState(false);
@@ -77,7 +173,9 @@ export function ProConnectScreen({ navigation, route }: Props) {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [reviewsExpanded, setReviewsExpanded] = useState(false);
   const [patientHealth, setPatientHealth] = useState<HealthProfile | null>(null);
+  const [patientAvatarUrl, setPatientAvatarUrl] = useState<string | null>(null);
   const [patientNotes, setPatientNotes] = useState<PractitionerNote[]>([]);
+  const [infoSheetVisible, setInfoSheetVisible] = useState(false);
   const [noteDraft, setNoteDraft] = useState('');
   const [savingNote, setSavingNote] = useState(false);
 
@@ -120,7 +218,7 @@ export function ProConnectScreen({ navigation, route }: Props) {
         const [{ data: profile }, { data: ratings }] = await Promise.all([
           supabase
             .from('profiles')
-            .select('full_name, specialty, years_of_experience, is_verified')
+            .select('full_name, specialty, years_of_experience, age, is_verified, avatar_url')
             .eq('id', consultation.professional_id)
             .maybeSingle(),
           supabase
@@ -145,13 +243,14 @@ export function ProConnectScreen({ navigation, route }: Props) {
         const [{ data: health }, notes] = await Promise.all([
           supabase
             .from('profiles')
-            .select('full_name, age, gender, bmi, sleep_hours, smoking, family_diabetes, hypertension, fasting_glucose_mgdl')
+            .select('full_name, age, gender, bmi, height_cm, weight_kg, sleep_hours, smoking, family_diabetes, hypertension, fasting_glucose_mgdl, avatar_url')
             .eq('id', consultation.patient_id)
             .maybeSingle(),
           fetchNotesForPatient(consultation.patient_id),
         ]);
         if (cancelled) return;
         setPatientHealth((health as HealthProfile) ?? null);
+        setPatientAvatarUrl((health as { avatar_url?: string | null } | null)?.avatar_url ?? null);
         setPatientNotes(notes);
       }
     })();
@@ -160,12 +259,14 @@ export function ProConnectScreen({ navigation, route }: Props) {
     };
   }, [consultation, userId]);
 
-  // Live incoming messages.
+  // Live incoming messages, including edits to messages already in the list.
   useEffect(() => {
     if (!consultationId) return;
     const unsubscribe = subscribeToMessages(consultationId, (message) => {
       setMessages((prev) =>
-        prev.some((m) => m.id === message.id) ? prev : [...prev, message],
+        prev.some((m) => m.id === message.id)
+          ? prev.map((m) => (m.id === message.id ? message : m))
+          : [...prev, message],
       );
     });
     return unsubscribe;
@@ -181,10 +282,81 @@ export function ProConnectScreen({ navigation, route }: Props) {
     if (error) setDraft(body); // restore so the text isn't lost
   };
 
+  const handleStartEdit = (message: Message) => {
+    setEditingId(message.id);
+    setEditDraft(message.body);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditDraft('');
+  };
+
+  const handleSaveEdit = async () => {
+    const body = editDraft.trim();
+    if (!editingId || !body || savingEdit) return;
+    setSavingEdit(true);
+    const { error } = await editMessage(editingId, body);
+    setSavingEdit(false);
+    if (error) return; // leave the edit open so they can retry
+    setMessages((prev) =>
+      prev.map((m) => (m.id === editingId ? { ...m, body, edited_at: new Date().toISOString() } : m)),
+    );
+    setEditingId(null);
+    setEditDraft('');
+  };
+
+  const handleSendImage = async () => {
+    if (!consultationId || sendingImage) return;
+    setSendingImage(true);
+    await sendImageMessage(consultationId);
+    setSendingImage(false);
+  };
+
+  const handleStartRecording = async () => {
+    const { granted } = await requestRecordingPermissionsAsync();
+    if (!granted) return;
+    await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+    await audioRecorder.prepareToRecordAsync();
+    audioRecorder.record();
+  };
+
+  const handleCancelRecording = async () => {
+    if (!recorderState.isRecording) return;
+    await audioRecorder.stop();
+  };
+
+  const handleStopAndSendRecording = async () => {
+    if (!consultationId || sendingAudio || !recorderState.isRecording) return;
+    const durationSeconds = recorderState.durationMillis / 1000;
+    await audioRecorder.stop();
+    const uri = audioRecorder.uri;
+    if (!uri || durationSeconds < 1) return; // too short to be a real note
+    setSendingAudio(true);
+    await sendAudioMessage(consultationId, uri, durationSeconds);
+    setSendingAudio(false);
+  };
+
   const isPatientView = userId != null && consultation?.patient_id === userId;
   const otherPartyName = isPatientView
     ? practitionerProfile?.full_name ?? 'Your practitioner'
     : consultation?.patient_name ?? 'Patient';
+  const otherPartyAvatarUrl = isPatientView ? practitionerProfile?.avatar_url ?? null : patientAvatarUrl;
+
+  const infoRows = isPatientView
+    ? [
+        practitionerProfile?.specialty ? { label: 'Medical line', value: practitionerProfile.specialty } : null,
+        practitionerProfile?.age != null ? { label: 'Age', value: String(practitionerProfile.age) } : null,
+        practitionerProfile?.years_of_experience != null
+          ? { label: 'Experience', value: `${practitionerProfile.years_of_experience} years` }
+          : null,
+      ].filter((row): row is { label: string; value: string } => row != null)
+    : [
+        consultation?.patient_age != null ? { label: 'Age', value: String(consultation.patient_age) } : null,
+        consultation?.patient_gender ? { label: 'Gender', value: consultation.patient_gender } : null,
+        patientHealth?.height_cm != null ? { label: 'Height', value: `${patientHealth.height_cm} cm` } : null,
+        patientHealth?.weight_kg != null ? { label: 'Weight', value: `${patientHealth.weight_kg} kg` } : null,
+      ].filter((row): row is { label: string; value: string } => row != null);
   const isActive = consultation?.status === 'active';
 
   const handleEnd = async () => {
@@ -239,10 +411,13 @@ export function ProConnectScreen({ navigation, route }: Props) {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <PatternBackground />
+      {/* On Android the OS pans the window to reveal the input; adding a
+          "height" adjustment on top of that double-shifts and leaves a gap,
+          so we only pad on iOS and let Android's pan handle it. */}
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        keyboardVerticalOffset={0}
       >
         {/* Header */}
         <View style={styles.header}>
@@ -286,11 +461,13 @@ export function ProConnectScreen({ navigation, route }: Props) {
             >
               {/* Patient/consultation card */}
               <View style={styles.patientCard}>
-                <View style={styles.patientAvatar}>
-                  <Text style={styles.patientAvatarText}>
-                    {initialsOf(isPatientView ? practitionerProfile?.full_name ?? 'Dr' : consultation.patient_name)}
-                  </Text>
-                </View>
+                <Pressable onPress={() => setInfoSheetVisible(true)}>
+                  <Avatar
+                    name={isPatientView ? practitionerProfile?.full_name ?? 'Dr' : consultation.patient_name}
+                    avatarUrl={otherPartyAvatarUrl}
+                    size={52}
+                  />
+                </Pressable>
                 <View style={styles.patientInfo}>
                   <View style={styles.nameRow}>
                     <Text style={styles.patientName}>{otherPartyName}</Text>
@@ -495,19 +672,59 @@ export function ProConnectScreen({ navigation, route }: Props) {
               ) : (
                 messages.map((message) => {
                   const mine = message.sender_id === userId;
+                  const isTextOnly = !message.image_url && !message.audio_url && !!message.body;
+                  const editable = mine && isTextOnly && isActive;
+                  const editingThis = editingId === message.id;
+
+                  if (editingThis) {
+                    return (
+                      <View key={message.id} style={[styles.bubble, styles.bubbleMine, styles.bubbleEditing]}>
+                        <TextInput
+                          style={styles.editInput}
+                          value={editDraft}
+                          onChangeText={setEditDraft}
+                          multiline
+                          autoFocus
+                        />
+                        <View style={styles.editActionsRow}>
+                          <Pressable onPress={handleCancelEdit} hitSlop={8}>
+                            <Text style={styles.editCancelText}>Cancel</Text>
+                          </Pressable>
+                          <Pressable onPress={handleSaveEdit} disabled={savingEdit} hitSlop={8}>
+                            {savingEdit ? (
+                              <ActivityIndicator size="small" color={colors.darkAccentGreen} />
+                            ) : (
+                              <Text style={styles.editSaveText}>Save</Text>
+                            )}
+                          </Pressable>
+                        </View>
+                      </View>
+                    );
+                  }
+
                   return (
-                    <View
+                    <Pressable
                       key={message.id}
+                      onLongPress={editable ? () => handleStartEdit(message) : undefined}
                       style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}
                     >
-                      <Text style={styles.bubbleText}>{message.body}</Text>
+                      {message.image_url ? <ChatImage path={message.image_url} /> : null}
+                      {message.audio_url ? (
+                        <AudioBubble
+                          path={message.audio_url}
+                          mine={mine}
+                          savedDuration={message.audio_duration_seconds}
+                        />
+                      ) : null}
+                      {message.body ? <Text style={styles.bubbleText}>{message.body}</Text> : null}
                       <View style={styles.bubbleMeta}>
+                        {message.edited_at ? <Text style={styles.bubbleEdited}>edited</Text> : null}
                         <Text style={styles.bubbleTime}>{formatTime(message.created_at)}</Text>
                         {mine ? (
                           <Ionicons name="checkmark-done" size={15} color={colors.primaryGreen} />
                         ) : null}
                       </View>
-                    </View>
+                    </Pressable>
                   );
                 })
               )}
@@ -516,23 +733,62 @@ export function ProConnectScreen({ navigation, route }: Props) {
             {/* Input bar — only while the consultation is open */}
             {isActive ? (
               <View style={styles.inputRow}>
-                <View style={styles.inputBox}>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Type a message..."
-                    placeholderTextColor={colors.inputPlaceholder}
-                    value={draft}
-                    onChangeText={setDraft}
-                    multiline
-                    onSubmitEditing={handleSend}
-                  />
-                </View>
+                {recorderState.isRecording ? (
+                  <View style={styles.recordingBar}>
+                    <Pressable onPress={handleCancelRecording} hitSlop={10}>
+                      <Ionicons name="trash-outline" size={20} color={colors.danger} />
+                    </Pressable>
+                    <View style={styles.recordingDot} />
+                    <Text style={styles.recordingText}>
+                      Recording... {formatDuration(recorderState.durationMillis / 1000)}
+                    </Text>
+                  </View>
+                ) : (
+                  <>
+                    <Pressable
+                      style={styles.attachButton}
+                      onPress={handleSendImage}
+                      disabled={sendingImage}
+                    >
+                      {sendingImage ? (
+                        <ActivityIndicator size="small" color={colors.darkAccentGreen} />
+                      ) : (
+                        <Ionicons name="image-outline" size={22} color={colors.darkAccentGreen} />
+                      )}
+                    </Pressable>
+                    <View style={styles.inputBox}>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Type a message..."
+                        placeholderTextColor={colors.inputPlaceholder}
+                        value={draft}
+                        onChangeText={setDraft}
+                        multiline
+                        onSubmitEditing={handleSend}
+                      />
+                    </View>
+                  </>
+                )}
                 <Pressable
-                  style={[styles.sendButton, !draft.trim() && styles.sendButtonDisabled]}
-                  onPress={handleSend}
-                  disabled={!draft.trim()}
+                  style={styles.sendButton}
+                  onPress={
+                    recorderState.isRecording
+                      ? handleStopAndSendRecording
+                      : draft.trim()
+                        ? handleSend
+                        : handleStartRecording
+                  }
+                  disabled={sendingAudio}
                 >
-                  <Ionicons name="send" size={20} color={colors.white} />
+                  {sendingAudio ? (
+                    <ActivityIndicator size="small" color={colors.white} />
+                  ) : (
+                    <Ionicons
+                      name={recorderState.isRecording ? 'checkmark' : draft.trim() ? 'send' : 'mic'}
+                      size={20}
+                      color={colors.white}
+                    />
+                  )}
                 </Pressable>
               </View>
             ) : (
@@ -560,6 +816,15 @@ export function ProConnectScreen({ navigation, route }: Props) {
         error={ratingError}
         onSubmit={handleSubmitRating}
         onDismiss={() => setRatingVisible(false)}
+      />
+
+      <PersonInfoSheet
+        visible={infoSheetVisible}
+        name={otherPartyName}
+        avatarUrl={otherPartyAvatarUrl}
+        verified={isPatientView ? !!practitionerProfile?.is_verified : false}
+        rows={infoRows}
+        onDismiss={() => setInfoSheetVisible(false)}
       />
     </SafeAreaView>
   );
@@ -658,19 +923,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     padding: 14,
-  },
-  patientAvatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: colors.pillGreenBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  patientAvatarText: {
-    fontFamily: fonts.headingSemiBold,
-    fontSize: 17,
-    color: colors.darkAccentGreen,
   },
   patientInfo: {
     flex: 1,
@@ -897,10 +1149,44 @@ const styles = StyleSheet.create({
     gap: 4,
     marginTop: 4,
   },
+  bubbleEdited: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 11,
+    fontStyle: 'italic',
+    color: colors.textMuted,
+    marginRight: 2,
+  },
   bubbleTime: {
     fontFamily: fonts.bodyRegular,
     fontSize: 11.5,
     color: colors.textMuted,
+  },
+  bubbleEditing: {
+    minWidth: '70%',
+  },
+  editInput: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 14.5,
+    lineHeight: 21,
+    color: colors.textPrimary,
+    maxHeight: 100,
+  },
+  editActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 16,
+    marginTop: 8,
+  },
+  editCancelText: {
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  editSaveText: {
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 13,
+    color: colors.darkAccentGreen,
   },
   inputRow: {
     flexDirection: 'row',
@@ -924,6 +1210,84 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     color: colors.textPrimary,
     maxHeight: 90,
+  },
+  attachButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.pillGreenBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recordingBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+  },
+  recordingDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: colors.danger,
+  },
+  recordingText: {
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 14,
+    color: colors.textPrimary,
+  },
+  audioRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 170,
+    paddingVertical: 2,
+  },
+  audioPlayCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  audioTrack: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    overflow: 'hidden',
+  },
+  audioTrackFill: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.primaryGreen,
+  },
+  audioDuration: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 11.5,
+    color: colors.textMuted,
+    minWidth: 30,
+  },
+  chatImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 12,
+    marginBottom: 4,
+  },
+  chatImagePlaceholder: {
+    width: 200,
+    height: 200,
+    borderRadius: 12,
+    marginBottom: 4,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sendButton: {
     width: 48,

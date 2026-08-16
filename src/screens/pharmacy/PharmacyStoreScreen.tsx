@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PatternBackground } from '../../components/ui/PatternBackground';
+import { friendlyError } from '../../lib/errors';
 import { supabase } from '../../lib/supabase';
 import { colors, fonts } from '../../theme';
 
@@ -147,7 +148,7 @@ export function PharmacyStoreScreen() {
         .upload(path, blob, { upsert: true, contentType: asset.mimeType ?? 'application/octet-stream' });
 
       if (uploadError) {
-        setMessage({ kind: 'error', text: uploadError.message });
+        setMessage({ kind: 'error', text: friendlyError(uploadError) });
         return;
       }
       setLicensePath(path);
@@ -200,7 +201,7 @@ export function PharmacyStoreScreen() {
     setSaving(false);
 
     if (error) {
-      setMessage({ kind: 'error', text: error.message });
+      setMessage({ kind: 'error', text: friendlyError(error) });
       return;
     }
     setMessage({ kind: 'success', text: 'Pharmacy details saved.' });
@@ -219,7 +220,7 @@ export function PharmacyStoreScreen() {
       <PatternBackground />
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
           contentContainerStyle={styles.content}

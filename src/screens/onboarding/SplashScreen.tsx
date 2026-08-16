@@ -1,6 +1,11 @@
 import { useEffect } from 'react';
 import { Image, StyleSheet } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { getHasOnboarded } from '../../lib/onboardingState';
+import { registerForPushNotifications } from '../../lib/pushNotifications';
+import { rescheduleAllHealthReminders } from '../../lib/healthReminders';
+import { refreshPeriodReminders } from '../../lib/periodTracker';
+import { autoEnableRelevantReminders } from '../../lib/autoReminders';
 import { getSessionRole } from '../../lib/supabase';
 import type { RootStackParamList } from '../../navigation/types';
 
@@ -21,12 +26,25 @@ export function SplashScreen({ navigation }: Props) {
         role = null;
       }
 
+      // Already-logged-in users: make sure this device is registered for push
+      // so alerts reach them even when the app is closed.
+      if (role !== null) {
+        void registerForPushNotifications();
+        void rescheduleAllHealthReminders();
+        void refreshPeriodReminders();
+        void autoEnableRelevantReminders();
+      }
+
+      // Returning-but-logged-out users skip the onboarding carousel and go
+      // straight to Login; only genuinely first-time users see the carousel.
+      const hasOnboarded = role === null ? await getHasOnboarded() : false;
+
       const elapsed = Date.now() - start;
       const wait = Math.max(0, MIN_SPLASH_MS - elapsed);
       setTimeout(() => {
         if (cancelled) return;
         if (role === null) {
-          navigation.replace('Onboarding');
+          navigation.replace(hasOnboarded ? 'Login' : 'Onboarding');
         } else if (role === 'pharmacy') {
           navigation.replace('PharmacyTabs');
         } else {

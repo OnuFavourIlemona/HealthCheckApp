@@ -18,10 +18,29 @@ import { PatternBackground } from '../components/ui/PatternBackground';
 import { ProgressRing } from '../components/ui/ProgressRing';
 import { Tappable } from '../components/ui/Tappable';
 import { fetchAssessmentHistory, latestPerType } from '../lib/dashboard';
+import { friendlyError } from '../lib/errors';
+import { computeFsrp } from '../lib/fsrp';
+import { computeHypertensionRisk } from '../lib/hypertensionRisk';
+import { computeFindrisc, type FamilyDiabetesDegree } from '../lib/findrisc';
+import { interpretKnownReadings, bandForReading } from '../lib/diabetesReading';
+import { computeKidneyRisk } from '../lib/kidneyRisk';
+import { computeLiverRisk } from '../lib/liverRisk';
+import { autoEnableRelevantReminders } from '../lib/autoReminders';
+import { successHaptic } from '../lib/haptics';
+import { type DietFrequencies } from '../lib/nidrs';
 import { predictCondition, type HealthInfoInput } from '../lib/predictionApi';
 import { supabase } from '../lib/supabase';
 import type { RootStackParamList } from '../navigation/types';
 import { colors, fonts, riskLevelColor, type RiskLevel } from '../theme';
+
+const FSRP_ICONS: Record<string, string> = {
+  age: 'calendar-account-outline',
+  bp: 'heart-pulse',
+  diabetes: 'water-plus',
+  smoker: 'smoking',
+  cvd: 'heart-broken',
+  afib: 'heart-flash',
+};
 
 type AssessmentType = {
   key: string;
@@ -35,7 +54,8 @@ const assessmentTypes: AssessmentType[] = [
   { key: 'diabetes', label: 'Diabetes', icon: 'water-plus', iconColor: '#E4572E', iconBg: '#FDEBE4' },
   { key: 'hypertension', label: 'Hypertension', icon: 'heart-pulse', iconColor: colors.darkAccentGreen, iconBg: colors.pillGreenBg },
   { key: 'stroke', label: 'Stroke', icon: 'brain', iconColor: '#6C6FCF', iconBg: colors.moonBg },
-  { key: 'high_blood_sugar', label: 'High Blood Sugar', icon: 'diabetes', iconColor: '#E4572E', iconBg: '#FDEBE4' },
+  { key: 'kidney', label: 'Kidney Health', icon: 'water-outline', iconColor: '#3B7DB0', iconBg: '#E4F0F8' },
+  { key: 'liver', label: 'Liver Health', icon: 'medical-bag', iconColor: '#B5732E', iconBg: '#F7ECDD' },
 ];
 
 type HealthInfo = {
@@ -47,6 +67,33 @@ type HealthInfo = {
   family_diabetes: boolean | null;
   hypertension: boolean | null;
   fasting_glucose_mgdl: number | null;
+  // Optional extras used by the Framingham stroke equation (fall back
+  // gracefully when absent — see lib/fsrp.ts).
+  bp_systolic?: number | null;
+  on_bp_medication?: boolean | null;
+  atrial_fibrillation?: boolean | null;
+  heart_disease?: boolean | null;
+  diet_frequencies?: Record<string, string> | null;
+  family_hypertension?: boolean | null;
+  exercise_days_per_week?: number | null;
+  // Optional extras used by the FINDRISC diabetes score (see lib/findrisc.ts).
+  waist_cm?: number | null;
+  daily_fruit_veg?: boolean | null;
+  ever_high_glucose?: boolean | null;
+  glucose_is_fasting?: boolean | null;
+  hba1c_percent?: number | null;
+  // Optional extras used by the kidney health risk check (see lib/kidneyRisk.ts).
+  family_kidney_disease?: boolean | null;
+  frequent_painkiller_use?: boolean | null;
+  herbal_remedy_use?: boolean | null;
+  water_cups_per_day?: number | null;
+  chronic_infection_history?: boolean | null;
+  // Optional extras used by the liver health risk check (see lib/liverRisk.ts).
+  alcohol?: boolean | null;
+  viral_hepatitis?: boolean | null;
+  hepatitis_tested?: boolean | null;
+  family_liver_disease?: boolean | null;
+  risky_blood_exposure?: boolean | null;
 };
 
 function isComplete(info: HealthInfo | null): info is Required<HealthInfo> & HealthInfo {
@@ -142,7 +189,7 @@ export function AssessScreen() {
           supabase
             .from('profiles')
             .select(
-              'age, gender, bmi, sleep_hours, smoking, family_diabetes, hypertension, fasting_glucose_mgdl, ai_consent_at',
+              'age, gender, bmi, sleep_hours, smoking, family_diabetes, hypertension, fasting_glucose_mgdl, ai_consent_at, bp_systolic, on_bp_medication, atrial_fibrillation, heart_disease, diet_frequencies, family_hypertension, exercise_days_per_week, waist_cm, daily_fruit_veg, ever_high_glucose, glucose_is_fasting, hba1c_percent, family_kidney_disease, frequent_painkiller_use, herbal_remedy_use, water_cups_per_day, chronic_infection_history, alcohol, viral_hepatitis, hepatitis_tested, family_liver_disease, risky_blood_exposure',
             )
             .eq('id', userId)
             .maybeSingle(),
@@ -154,7 +201,16 @@ export function AssessScreen() {
           setHealthInfo(data);
           setConsentedAt(data.ai_consent_at);
         }
-        setAssessedTypes(new Set(latestPerType(history).map((item) => item.assessment_type)));
+        // Only count conditions we still offer, so retired types can never
+        // push the "X of Y assessed" count past the number of tiles.
+        const offered = new Set(assessmentTypes.map((t) => t.key));
+        setAssessedTypes(
+          new Set(
+            latestPerType(history)
+              .map((item) => item.assessment_type)
+              .filter((key) => offered.has(key)),
+          ),
+        );
         setLoading(false);
       })();
       return () => {
@@ -186,10 +242,195 @@ export function AssessScreen() {
       hypertension: healthInfo.hypertension as boolean,
       fasting_glucose_mgdl: healthInfo.fasting_glucose_mgdl,
     };
-    const apiResult = await predictCondition(type.key, apiInput);
+    // Stroke uses the validated Framingham Stroke Risk Profile equation
+    // (see lib/fsrp.ts) rather than the ML model -- it's a published clinical
+    // score, runs on-device, and degrades gracefully when inputs are missing.
+    const fsrp =
+      type.key === 'stroke'
+        ? computeFsrp({
+            age: healthInfo.age as number,
+            sex: healthInfo.gender === 'male' || healthInfo.gender === 'female' ? healthInfo.gender : null,
+            systolicBp: healthInfo.bp_systolic ?? null,
+            onBpMedication: healthInfo.on_bp_medication ?? null,
+            // Personal diabetes proxied from a fasting glucose at/above the
+            // diagnostic threshold when no explicit diagnosis is on file.
+            diabetes:
+              healthInfo.fasting_glucose_mgdl != null ? healthInfo.fasting_glucose_mgdl >= 126 : null,
+            smoker: healthInfo.smoking ?? null,
+            cardiovascularDisease: healthInfo.heart_disease ?? null,
+            atrialFibrillation: healthInfo.atrial_fibrillation ?? null,
+          })
+        : null;
 
-    const score = apiResult?.score ?? computeScore(healthInfo);
-    const level = apiResult?.riskLevel ?? levelForScore(score, type.key);
+    // Hypertension uses the combined NiDRS + risk-factor assessment (see
+    // lib/hypertensionRisk.ts): the validated Nigerian diet score plus the
+    // recognised non-dietary factors, reported as a band.
+    const htn =
+      type.key === 'hypertension'
+        ? computeHypertensionRisk({
+            age: healthInfo.age as number,
+            bmi: healthInfo.bmi as number,
+            smoking: healthInfo.smoking ?? null,
+            exerciseDaysPerWeek: healthInfo.exercise_days_per_week ?? null,
+            sleepHours: healthInfo.sleep_hours ?? null,
+            familyHypertension: healthInfo.family_hypertension ?? null,
+            toldHypertension: healthInfo.hypertension ?? null,
+            systolicBp: healthInfo.bp_systolic ?? null,
+            onBpMedication: healthInfo.on_bp_medication ?? null,
+            diet: (healthInfo.diet_frequencies as DietFrequencies | null) ?? null,
+          })
+        : null;
+
+    // Diabetes AND High Blood Sugar share one engine: they are the same
+    // question (is your sugar high / heading that way?). FINDRISC in its IDF
+    // 0–26 form (see lib/findrisc.ts) is a no-blood-test risk score validated
+    // in Africans (AUC 0.86) and used in Nigeria; it reaches every user and
+    // reports a band.
+    const isSugarType = type.key === 'diabetes';
+    const dia = isSugarType
+      ? computeFindrisc({
+            age: healthInfo.age as number,
+            bmi: healthInfo.bmi as number,
+            waistCm: healthInfo.waist_cm ?? null,
+            sex: healthInfo.gender === 'male' || healthInfo.gender === 'female' ? healthInfo.gender : null,
+            // At least 30 min most days — proxied from weekly exercise days.
+            physicallyActive:
+              healthInfo.exercise_days_per_week != null ? healthInfo.exercise_days_per_week >= 5 : null,
+            dailyFruitVeg: healthInfo.daily_fruit_veg ?? null,
+            onBpMedication: healthInfo.on_bp_medication ?? null,
+            // A prior high reading counts; a known fasting glucose at/above the
+            // pre-diabetes threshold also does.
+            everHighGlucose:
+              healthInfo.ever_high_glucose === true ||
+              (healthInfo.fasting_glucose_mgdl != null && healthInfo.fasting_glucose_mgdl >= 100)
+                ? true
+                : healthInfo.ever_high_glucose === false || healthInfo.fasting_glucose_mgdl != null
+                  ? false
+                  : null,
+            // The app collects family diabetes as yes/no; a positive answer
+            // usually means a first-degree relative, the higher-weight case.
+            familyDiabetes: (healthInfo.family_diabetes == null
+              ? null
+              : healthInfo.family_diabetes
+                ? 'first'
+                : 'none') as FamilyDiabetesDegree | null,
+          })
+        : null;
+
+    // Two-track: if the patient KNOWS a blood-sugar number (fasting or random
+    // glucose, or HbA1c), that direct clinical reading leads — a value in the
+    // diabetes range must never be softened into a "future risk" band. When
+    // there's no number (or it's normal), FINDRISC's future-risk score leads.
+    const reading = isSugarType
+      ? interpretKnownReadings({
+            glucoseMgdl: healthInfo.fasting_glucose_mgdl ?? null,
+            glucoseFasting: healthInfo.glucose_is_fasting ?? null,
+            hba1cPercent: healthInfo.hba1c_percent ?? null,
+          })
+        : null;
+
+    const findriscFactors = dia
+      ? dia.factors.map((f) => ({
+          key: f.key,
+          name: f.name,
+          detail: f.detail,
+          category: 'increase' as const,
+          impact: f.points,
+          icon: f.icon,
+          tip: f.tip,
+        }))
+      : [];
+    const readingFactor = reading
+      ? {
+          key: 'reading',
+          name: reading.name,
+          detail: reading.detail,
+          category: (reading.category === 'normal' ? 'protective' : 'increase') as 'protective' | 'increase',
+          impact: reading.category === 'diabetes_range' ? 10 : reading.category === 'prediabetes' ? 6 : 0,
+          icon: 'water',
+          tip: reading.tip,
+        }
+      : null;
+
+    // Combined outcome (fires for both the Diabetes and High Blood Sugar tiles).
+    const diaOutcome = dia
+      ? (() => {
+          const abnormal = reading != null && reading.category !== 'normal';
+          const b = abnormal
+            ? bandForReading(reading!.category)
+            : { band: dia.band, score: dia.score100 };
+          const factors = readingFactor ? [readingFactor, ...findriscFactors] : findriscFactors;
+          return {
+            band: b.band,
+            score: b.score,
+            source: abnormal ? ('glucose_reading' as const) : ('findrisc' as const),
+            factors,
+            readingCategory: reading?.category ?? null,
+          };
+        })()
+      : null;
+
+    // Kidney health risk: rising fast in Nigeria and driven mostly by lifestyle
+    // and diet (see lib/kidneyRisk.ts). Reports a band from the known risk
+    // factors, never a fabricated percentage.
+    const kidney =
+      type.key === 'kidney'
+        ? computeKidneyRisk({
+            age: healthInfo.age ?? null,
+            sex: healthInfo.gender === 'male' || healthInfo.gender === 'female' ? healthInfo.gender : null,
+            bmi: healthInfo.bmi ?? null,
+            smoking: healthInfo.smoking ?? null,
+            hypertension: healthInfo.hypertension ?? null,
+            onBpMedication: healthInfo.on_bp_medication ?? null,
+            systolicBp: healthInfo.bp_systolic ?? null,
+            // Any personal sign of diabetes from what we already collect.
+            diabetes:
+              healthInfo.ever_high_glucose === true ||
+              (healthInfo.fasting_glucose_mgdl != null && healthInfo.fasting_glucose_mgdl >= 126) ||
+              (healthInfo.hba1c_percent != null && healthInfo.hba1c_percent >= 6.5)
+                ? true
+                : null,
+            heartDisease: healthInfo.heart_disease ?? null,
+            familyKidneyDisease: healthInfo.family_kidney_disease ?? null,
+            frequentPainkillers: healthInfo.frequent_painkiller_use ?? null,
+            herbalRemedies: healthInfo.herbal_remedy_use ?? null,
+            // Heavy salt is read from the diet answers already collected.
+            highSalt:
+              (healthInfo.diet_frequencies as DietFrequencies | null)?.salt === 'daily' ? true : null,
+            waterCupsPerDay: healthInfo.water_cups_per_day ?? null,
+            chronicInfection: healthInfo.chronic_infection_history ?? null,
+          })
+        : null;
+
+    // Liver health risk: hepatitis B, alcohol, herbal mixtures, and fatty liver
+    // are the big Nigerian drivers (see lib/liverRisk.ts). Reports a band.
+    const diabetesSignal =
+      healthInfo.ever_high_glucose === true ||
+      (healthInfo.fasting_glucose_mgdl != null && healthInfo.fasting_glucose_mgdl >= 126) ||
+      (healthInfo.hba1c_percent != null && healthInfo.hba1c_percent >= 6.5);
+    const softDrinks = (healthInfo.diet_frequencies as DietFrequencies | null)?.soft_drinks;
+    const liver =
+      type.key === 'liver'
+        ? computeLiverRisk({
+            viralHepatitis: healthInfo.viral_hepatitis ?? null,
+            neverTestedHepatitis:
+              healthInfo.hepatitis_tested === false ? true : healthInfo.hepatitis_tested === true ? false : null,
+            alcohol: healthInfo.alcohol ?? null,
+            frequentPainkillers: healthInfo.frequent_painkiller_use ?? null,
+            herbalRemedies: healthInfo.herbal_remedy_use ?? null,
+            smoking: healthInfo.smoking ?? null,
+            bmi: healthInfo.bmi ?? null,
+            diabetes: diabetesSignal ? true : null,
+            sugaryDiet: softDrinks === 'daily' || softDrinks === 'w35' ? true : null,
+            familyLiverDisease: healthInfo.family_liver_disease ?? null,
+            riskyBloodExposure: healthInfo.risky_blood_exposure ?? null,
+          })
+        : null;
+
+    const apiResult = fsrp || htn || dia || kidney || liver ? null : await predictCondition(type.key, apiInput);
+
+    const score = fsrp?.tenYearRiskPercent ?? htn?.score ?? diaOutcome?.score ?? kidney?.score ?? liver?.score ?? apiResult?.score ?? computeScore(healthInfo);
+    const level = fsrp?.riskLevel ?? htn?.band ?? diaOutcome?.band ?? kidney?.band ?? liver?.band ?? apiResult?.riskLevel ?? levelForScore(score, type.key);
 
     const { data: sessionData } = await supabase.auth.getSession();
     const userId = sessionData.session?.user.id;
@@ -207,22 +448,70 @@ export function AssessScreen() {
           family_history: healthInfo.family_diabetes,
           hypertension: healthInfo.hypertension,
           fasting_glucose_mgdl: healthInfo.fasting_glucose_mgdl,
-          model_tier: apiResult?.modelTier ?? (healthInfo.fasting_glucose_mgdl != null ? 'full' : 'core'),
-          source: apiResult ? 'api' : 'heuristic',
-          ...(apiResult ? { factors: apiResult.factors } : {}),
+          model_tier: fsrp || htn || dia || kidney || liver ? 'equation' : apiResult?.modelTier ?? (healthInfo.fasting_glucose_mgdl != null ? 'full' : 'core'),
+          source: fsrp ? 'fsrp' : htn ? 'nidrs' : diaOutcome ? diaOutcome.source : kidney ? 'kidney' : liver ? 'liver' : apiResult ? 'api' : 'heuristic',
+          ...(htn
+            ? {
+                factors: htn.factors,
+                nidrs_score: htn.nidrsScore,
+                nidrs_category: htn.nidrsCategory,
+              }
+            : {}),
+          ...(diaOutcome && dia
+            ? {
+                factors: diaOutcome.factors,
+                findrisc_score: dia.score,
+                findrisc_category: dia.findriscCategory,
+                findrisc_answered: dia.answered,
+                reading_category: diaOutcome.readingCategory,
+              }
+            : {}),
+          ...(kidney
+            ? {
+                factors: kidney.factors,
+                kidney_points: kidney.points,
+              }
+            : {}),
+          ...(liver
+            ? {
+                factors: liver.factors,
+                liver_points: liver.points,
+              }
+            : {}),
+          ...(fsrp
+            ? {
+                factors: fsrp.factors.map((f) => ({
+                  key: f.key,
+                  name: f.name,
+                  detail: f.detail,
+                  category: f.points > 0 ? 'increase' : 'protective',
+                  impact: f.points,
+                  icon: FSRP_ICONS[f.key] ?? 'alert-circle-outline',
+                  tip: null,
+                })),
+                fsrp_points: fsrp.totalPoints,
+                fsrp_used_fallback: fsrp.usedFallback,
+              }
+            : apiResult
+              ? { factors: apiResult.factors }
+              : {}),
           ...(type.key === 'high_blood_sugar' ? { shares_model_with: 'diabetes' } : {}),
         },
         created_at: new Date().toISOString(),
       });
       if (insertError) {
         setRunning(false);
-        setError(insertError.message);
+        setError(friendlyError(insertError));
         return;
       }
     }
     setRunning(false);
+    successHaptic();
     setResult({ type, score, level });
     setAssessedTypes((prev) => new Set(prev).add(type.key));
+    // If this condition is now a risk and reminders are on, switch on its daily
+    // reminder automatically (self-guards; won't re-enable a removed one).
+    void autoEnableRelevantReminders();
   };
 
   const handleSelectType = (type: AssessmentType) => {

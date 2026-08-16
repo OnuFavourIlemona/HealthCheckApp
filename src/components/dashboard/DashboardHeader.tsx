@@ -7,6 +7,7 @@ import { Tappable } from '../ui/Tappable';
 type Props = {
   email?: string | null;
   name?: string | null;
+  avatarUrl?: string | null;
   notificationCount?: number;
   onPressNotifications?: () => void;
   onPressAvatar?: () => void;
@@ -15,6 +16,7 @@ type Props = {
 export function DashboardHeader({
   email,
   name,
+  avatarUrl,
   notificationCount = 0,
   onPressNotifications,
   onPressAvatar,
@@ -36,7 +38,7 @@ export function DashboardHeader({
           ) : null}
         </Pressable>
         <Tappable onPress={onPressAvatar} scaleDown={false}>
-          <Avatar email={email} name={name} size={32} />
+          <Avatar email={email} name={name} avatarUrl={avatarUrl} size={32} />
         </Tappable>
       </View>
     </View>

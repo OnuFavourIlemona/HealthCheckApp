@@ -1,6 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -15,6 +16,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PatternBackground } from '../components/ui/PatternBackground';
 import { createConsultationRequest } from '../lib/consultations';
+import { friendlyError } from '../lib/errors';
+import { hasProvidedNin } from '../lib/nin';
 import type { RootStackParamList } from '../navigation/types';
 import { colors, fonts } from '../theme';
 
@@ -53,6 +56,19 @@ export function RequestConsultationScreen({ navigation }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const [ninOk, setNinOk] = useState<boolean | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      hasProvidedNin().then((ok) => {
+        if (active) setNinOk(ok);
+      });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
 
   const toggleSymptom = (symptom: string) => {
     setSelected((prev) =>
@@ -88,11 +104,39 @@ export function RequestConsultationScreen({ navigation }: Props) {
     setSubmitting(false);
 
     if (requestError) {
-      setError(requestError);
+      setError(friendlyError(requestError));
       return;
     }
     setSent(true);
   };
+
+  if (ninOk === false) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+        <PatternBackground />
+        <View style={styles.header}>
+          <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </Pressable>
+          <Text style={styles.headerTitle}>Talk to a Doctor</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <View style={styles.successWrap}>
+          <View style={styles.gateIcon}>
+            <MaterialCommunityIcons name="shield-lock-outline" size={40} color={colors.darkAccentGreen} />
+          </View>
+          <Text style={styles.successTitle}>Verify your identity first</Text>
+          <Text style={styles.successBody}>
+            Before you can chat with a professional, we need your NIN on file. It stays encrypted
+            and private, and keeps everyone accountable if a problem is ever reported.
+          </Text>
+          <Pressable style={styles.primaryButton} onPress={() => navigation.navigate('VerifyNin')}>
+            <Text style={styles.primaryButtonText}>Verify with NIN</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (sent) {
     return (
@@ -126,7 +170,7 @@ export function RequestConsultationScreen({ navigation }: Props) {
       <PatternBackground />
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.header}>
           <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
@@ -367,6 +411,8 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
+    alignSelf: 'stretch',
+    paddingHorizontal: 32,
     marginTop: 22,
   },
   primaryButtonText: {
@@ -393,6 +439,14 @@ const styles = StyleSheet.create({
     height: 84,
     borderRadius: 42,
     backgroundColor: colors.primaryGreen,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gateIcon: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: colors.pillGreenBg,
     alignItems: 'center',
     justifyContent: 'center',
   },

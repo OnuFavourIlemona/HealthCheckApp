@@ -23,6 +23,7 @@ export const colors = {
   avatarBorder: '#E6E6E6',
 
   pillGreenBg: '#E5F5E8',
+  pillGreenBorder: '#CBE9D2',
   quickActionBg: '#E6F5E8',
   moonBg: '#E6E8FA',
 

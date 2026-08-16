@@ -65,6 +65,7 @@ const styles = StyleSheet.create({
   tile: {
     width: '100%',
     flex: 1,
+    opacity: 0.55,
   },
   tileMirrored: {
     transform: [{ scaleX: -1 }],

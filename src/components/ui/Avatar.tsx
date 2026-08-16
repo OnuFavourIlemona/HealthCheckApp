@@ -6,6 +6,8 @@ import { colors, fonts } from '../../theme';
 type Props = {
   email?: string | null;
   name?: string | null;
+  /** An uploaded profile photo. Takes priority over Gravatar and initials. */
+  avatarUrl?: string | null;
   size?: number;
   style?: ViewStyle;
   textColor?: string;
@@ -43,13 +45,18 @@ function initialsOf(name: string | null | undefined, email: string | null | unde
  * back to their initials otherwise (Gravatar returns a 404 for emails with
  * no photo when `d=404` is passed, which we use to detect the fallback case).
  */
-export function Avatar({ email, name, size = 40, style, textColor, backgroundColor }: Props) {
+export function Avatar({ email, name, avatarUrl, size = 40, style, textColor, backgroundColor }: Props) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoFailed, setPhotoFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setPhotoFailed(false);
+    // An uploaded photo always wins over Gravatar.
+    if (avatarUrl) {
+      setPhotoUrl(avatarUrl);
+      return;
+    }
     if (!email) {
       setPhotoUrl(null);
       return;
@@ -64,7 +71,7 @@ export function Avatar({ email, name, size = 40, style, textColor, backgroundCol
     return () => {
       cancelled = true;
     };
-  }, [email, size]);
+  }, [email, size, avatarUrl]);
 
   const initials = initialsOf(name, email);
 

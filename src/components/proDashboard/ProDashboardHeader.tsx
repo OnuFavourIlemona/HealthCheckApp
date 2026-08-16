@@ -6,6 +6,7 @@ import { Avatar } from '../ui/Avatar';
 type Props = {
   name: string;
   email?: string | null;
+  avatarUrl?: string | null;
   role: string;
   /** Only verified practitioners get the badge — it must mean something. */
   verified?: boolean;
@@ -24,6 +25,7 @@ function greetingForNow(date = new Date()): string {
 export function ProDashboardHeader({
   name,
   email,
+  avatarUrl,
   role,
   verified = false,
   notificationCount = 0,
@@ -33,7 +35,12 @@ export function ProDashboardHeader({
   return (
     <View style={styles.row}>
       <Pressable onPress={onPressAvatar}>
-        <Avatar email={email} name={name.replace(/^(Dr|Mr|Mrs|Ms)\.?\s+/i, '')} size={48} />
+        <Avatar
+          email={email}
+          name={name.replace(/^(Dr|Mr|Mrs|Ms)\.?\s+/i, '')}
+          avatarUrl={avatarUrl}
+          size={48}
+        />
       </Pressable>
       <View style={styles.textColumn}>
         <View style={styles.nameRow}>

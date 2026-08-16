@@ -2,6 +2,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SplashScreen } from '../screens/onboarding/SplashScreen';
 import { OnboardingScreen } from '../screens/onboarding/OnboardingScreen';
 import { LoginScreen } from '../screens/onboarding/LoginScreen';
+import { ForgotPasswordScreen } from '../screens/onboarding/ForgotPasswordScreen';
 import { SelectRoleScreen } from '../screens/onboarding/SelectRoleScreen';
 import { SignupMedicalPractitionerScreen } from '../screens/onboarding/SignupMedicalPractitionerScreen';
 import { SignupPharmacyScreen } from '../screens/onboarding/SignupPharmacyScreen';
@@ -22,6 +23,15 @@ import { ProCredentialsScreen } from '../screens/pro/ProCredentialsScreen';
 import { EditProfileScreen } from '../screens/EditProfileScreen';
 import { ChangePasswordScreen } from '../screens/ChangePasswordScreen';
 import { RecommendationDetailScreen } from '../screens/RecommendationDetailScreen';
+import { VerifyNinScreen } from '../screens/VerifyNinScreen';
+import { PharmacyMedicinesScreen } from '../screens/pharmacy/PharmacyMedicinesScreen';
+import { FindMedicineScreen } from '../screens/FindMedicineScreen';
+import { PeriodTrackerScreen } from '../screens/PeriodTrackerScreen';
+import { RemindersScreen } from '../screens/RemindersScreen';
+import { DeleteAccountScreen } from '../screens/DeleteAccountScreen';
+import { DrugRemindersScreen } from '../screens/DrugRemindersScreen';
+import { MyLabBookingsScreen } from '../screens/MyLabBookingsScreen';
+import { MyMedicineHoldsScreen } from '../screens/MyMedicineHoldsScreen';
 import type { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -32,6 +42,7 @@ export function RootNavigator() {
       <Stack.Screen name="Splash" component={SplashScreen} />
       <Stack.Screen name="Onboarding" component={OnboardingScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
       <Stack.Screen name="SelectRole" component={SelectRoleScreen} />
       <Stack.Screen name="SignupMedicalPractitioner" component={SignupMedicalPractitionerScreen} />
       <Stack.Screen name="SignupPharmacy" component={SignupPharmacyScreen} />
@@ -52,6 +63,15 @@ export function RootNavigator() {
       <Stack.Screen name="EditProfile" component={EditProfileScreen} />
       <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
       <Stack.Screen name="RecommendationDetail" component={RecommendationDetailScreen} />
+      <Stack.Screen name="VerifyNin" component={VerifyNinScreen} />
+      <Stack.Screen name="PharmacyMedicines" component={PharmacyMedicinesScreen} />
+      <Stack.Screen name="FindMedicine" component={FindMedicineScreen} />
+      <Stack.Screen name="PeriodTracker" component={PeriodTrackerScreen} />
+      <Stack.Screen name="Reminders" component={RemindersScreen} />
+      <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
+      <Stack.Screen name="DrugReminders" component={DrugRemindersScreen} />
+      <Stack.Screen name="MyLabBookings" component={MyLabBookingsScreen} />
+      <Stack.Screen name="MyMedicineHolds" component={MyMedicineHoldsScreen} />
     </Stack.Navigator>
   );
 }

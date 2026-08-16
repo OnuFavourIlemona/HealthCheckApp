@@ -83,7 +83,19 @@ export function NotificationsScreen({ navigation }: Props) {
     } else if (screen === 'ProTabs') {
       navigation.navigate('ProTabs');
     } else if (screen === 'PharmacyTabs') {
-      navigation.navigate('PharmacyTabs');
+      // Land straight on the Bookings tab with the right item highlighted,
+      // rather than the tab navigator's default (Dashboard) -- lab bookings
+      // and medicine holds live in different sections of that screen.
+      navigation.navigate('PharmacyTabs', {
+        screen: 'Bookings',
+        params: item.data?.reservationId
+          ? { reservationId: item.data.reservationId, section: 'holds' }
+          : { bookingId: item.data?.bookingId, section: 'labs' },
+      });
+    } else if (screen === 'MyLabBookings') {
+      navigation.navigate('MyLabBookings', { bookingId: item.data?.bookingId });
+    } else if (screen === 'MyMedicineHolds') {
+      navigation.navigate('MyMedicineHolds', { reservationId: item.data?.reservationId });
     }
   };
 

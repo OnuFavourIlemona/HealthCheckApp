@@ -54,9 +54,16 @@ export async function getSessionRole(): Promise<UserRole | null> {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role')
+    .select('role, deactivated_at')
     .eq('id', session.user.id)
     .maybeSingle();
+
+  // A deleted account is soft-deactivated, not removed. Treat it as signed
+  // out everywhere rather than letting it back into the app.
+  if (profile?.deactivated_at) {
+    await supabase.auth.signOut();
+    return null;
+  }
 
   const role = profile?.role ?? session.user.user_metadata?.role;
   if (role === 'medical_practitioner' || role === 'pharmacy' || role === 'patient') {

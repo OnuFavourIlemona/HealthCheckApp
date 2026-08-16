@@ -49,7 +49,9 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.white,
+    backgroundColor: colors.pillGreenBg,
+    borderWidth: 1,
+    borderColor: colors.pillGreenBorder,
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -64,7 +66,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: colors.pillGreenBg,
+    backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -92,7 +94,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   tag: {
-    backgroundColor: colors.pillGreenBg,
+    backgroundColor: colors.white,
     borderRadius: 10,
     height: 20,
     minWidth: 48,

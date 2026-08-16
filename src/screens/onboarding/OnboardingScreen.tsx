@@ -3,6 +3,7 @@ import { Image, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ProceedButton } from '../../components/forms/ProceedButton';
+import { setHasOnboarded } from '../../lib/onboardingState';
 import { colors, fonts } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 
@@ -37,6 +38,7 @@ export function OnboardingScreen({ navigation }: Props) {
     if (index < slides.length - 1) {
       setIndex(index + 1);
     } else {
+      setHasOnboarded();
       navigation.replace('SelectRole');
     }
   }

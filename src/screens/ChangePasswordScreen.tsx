@@ -5,6 +5,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollVie
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FormField } from '../components/forms/FormField';
 import { PatternBackground } from '../components/ui/PatternBackground';
+import { friendlyError } from '../lib/errors';
 import { supabase } from '../lib/supabase';
 import type { RootStackParamList } from '../navigation/types';
 import { colors, fonts } from '../theme';
@@ -61,7 +62,7 @@ export function ChangePasswordScreen({ navigation }: Props) {
     setSaving(false);
 
     if (error) {
-      setMessage({ kind: 'error', text: error.message });
+      setMessage({ kind: 'error', text: friendlyError(error) });
       return;
     }
     setMessage({ kind: 'success', text: 'Password changed.' });
@@ -71,7 +72,7 @@ export function ChangePasswordScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <PatternBackground height={380} />
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.header}>
             <Pressable onPress={() => navigation.goBack()} hitSlop={12}>

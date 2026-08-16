@@ -122,7 +122,7 @@ export function IncomingRequestsCard({ requests, acceptingId, error, onAccept }:
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.pillGreenBg,
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingTop: 16,

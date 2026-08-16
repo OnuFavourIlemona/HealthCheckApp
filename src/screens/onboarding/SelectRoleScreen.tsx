@@ -2,6 +2,7 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { PatternBackground } from '../../components/ui/PatternBackground';
+import { Tappable } from '../../components/ui/Tappable';
 import { setDemoScenario } from '../../lib/devSimulation';
 import { colors, fonts } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
@@ -22,7 +23,8 @@ export function SelectRoleScreen({ navigation }: Props) {
       <Text style={styles.subtitle}>Pick a role so that we'll tailor the dashboard specifically to you.</Text>
 
       <View style={styles.roleRow}>
-        <Pressable
+        <Tappable
+          scaleDown={false}
           style={[styles.roleCard, { backgroundColor: colors.roleMedicalPractitioner }]}
           onPress={() => navigation.navigate('SignupMedicalPractitioner')}
         >
@@ -34,7 +36,7 @@ export function SelectRoleScreen({ navigation }: Props) {
           >
             Medical Practitioner
           </Text>
-        </Pressable>
+        </Tappable>
         <Image
           source={require('../../../assets/images/roles/doctor.png')}
           style={styles.doctorImage}
@@ -43,12 +45,13 @@ export function SelectRoleScreen({ navigation }: Props) {
       </View>
 
       <View style={styles.roleRow}>
-        <Pressable
+        <Tappable
+          scaleDown={false}
           style={[styles.roleCard, styles.pharmacyCard, { backgroundColor: colors.rolePharmacy }]}
           onPress={() => navigation.navigate('SignupPharmacy')}
         >
           <Text style={[styles.roleLabel, styles.pharmacyLabel]}>Pharmacy</Text>
-        </Pressable>
+        </Tappable>
         <Image
           source={require('../../../assets/images/roles/pharmacy.png')}
           style={styles.pharmacyImage}
@@ -57,12 +60,13 @@ export function SelectRoleScreen({ navigation }: Props) {
       </View>
 
       <View style={styles.roleRow}>
-        <Pressable
+        <Tappable
+          scaleDown={false}
           style={[styles.roleCard, { backgroundColor: colors.rolePatient }]}
           onPress={() => navigation.navigate('SignupPatient')}
         >
           <Text style={styles.roleLabel}>Patient</Text>
-        </Pressable>
+        </Tappable>
         <Image
           source={require('../../../assets/images/roles/patient.png')}
           style={styles.patientImage}
@@ -159,61 +163,66 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   roleRow: {
-    marginTop: 24,
+    marginTop: 40,
   },
   roleCard: {
     height: CARD_HEIGHT,
     borderRadius: CARD_HEIGHT / 2,
-    borderWidth: 1,
-    borderColor: '#000000',
     justifyContent: 'center',
-    paddingLeft: 28,
+    // Figma: text side has 40pt inner padding.
+    paddingLeft: 40,
   },
+  // Pharmacy's photo sits on the LEFT, so its label is pushed to the right via
+  // textAlign (not justifyContent, which would drop the text to the pill's
+  // bottom and misalign it vertically against the other two roles). 40pt from
+  // the right edge to match the design.
   pharmacyCard: {
-    justifyContent: 'flex-end',
-    paddingRight: 32,
+    paddingRight: 40,
     paddingLeft: 0,
   },
   roleLabel: {
     fontFamily: fonts.headingSemiBold,
-    fontSize: 22,
+    fontSize: 24,
     color: colors.white,
   },
   pharmacyLabel: {
     textAlign: 'right',
   },
-  // "Medical Practitioner" is long enough to run into the doctor photo at
-  // full size — cap its width so it shrinks (via adjustsFontSizeToFit)
-  // instead of overlapping the image.
+  // "Medical Practitioner" is long enough to run into the doctor photo, so cap
+  // its width to the design's 208pt text box; it shrinks (via
+  // adjustsFontSizeToFit) only if the app font renders wider than that.
   medicalPractitionerLabel: {
-    maxWidth: 205,
+    maxWidth: 210,
   },
-  // Real dimensions from Figma inspector: 70 x 103, overhanging ~20pt above
-  // and below the 64pt pill, sitting ~21pt in from the pill's right edge.
+  // Figma inspector: 70 x 103, overhanging ~39pt above the 64pt pill and flush
+  // at the bottom, sitting 21pt in from the pill's right edge.
   doctorImage: {
     position: 'absolute',
     right: 21,
-    top: -20,
+    top: -39,
     width: 70,
     height: 103,
+    pointerEvents: 'none',
   },
-  // Real dimensions from Figma inspector: 210 x 102, overhanging ~19pt above
-  // and below the pill, flush with the card's left edge.
+  // Figma inspector: 210 x 102, overhanging ~19pt above/below the pill and
+  // extending 20pt past the card's left edge.
   pharmacyImage: {
     position: 'absolute',
-    left: 0,
+    left: -20,
     top: -19,
     width: 210,
     height: 102,
+    pointerEvents: 'none',
   },
-  // Real dimensions from Figma inspector: 60 x 97, overhanging ~17pt above
-  // and below the pill, sitting ~26pt in from the card's right edge.
+  // Figma inspector: 60 x 97, overhanging ~33pt above the pill and flush at the
+  // bottom, sitting 26pt in from the card's right edge.
   patientImage: {
     position: 'absolute',
     right: 26,
-    top: -17,
+    top: -33,
     width: 60,
     height: 97,
+    pointerEvents: 'none',
   },
   loginRow: {
     alignItems: 'center',

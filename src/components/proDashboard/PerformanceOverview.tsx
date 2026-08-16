@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
   },
   chartCard: {
     flex: 1,
-    backgroundColor: colors.white,
+    backgroundColor: colors.pillGreenBg,
     borderRadius: 14,
     padding: 14,
     shadowColor: '#000',

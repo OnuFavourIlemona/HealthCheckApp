@@ -14,6 +14,7 @@ import { AuthHeader } from '../../components/forms/AuthHeader';
 import { FormField } from '../../components/forms/FormField';
 import { ProceedButton } from '../../components/forms/ProceedButton';
 import { PatternBackground } from '../../components/ui/PatternBackground';
+import { friendlyError } from '../../lib/errors';
 import { signUpWithRole, type UserRole } from '../../lib/supabase';
 import type { RootStackParamList } from '../../navigation/types';
 import { colors, fonts } from '../../theme';
@@ -43,9 +44,17 @@ export function SignupFormScreen({ title, subtitle, fields, role, nameFieldKey, 
   const [values, setValues] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const setValue = (key: string, value: string) => {
     setValues((prev) => ({ ...prev, [key]: value }));
+    // Clear a field's error as soon as the user starts fixing it.
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   };
 
   const handleProceed = async () => {
@@ -57,29 +66,39 @@ export function SignupFormScreen({ title, subtitle, fields, role, nameFieldKey, 
     const confirmPassword = values.confirmPassword ?? '';
     const fullName = values[nameFieldKey]?.trim() ?? '';
 
+    const errors: Record<string, string> = {};
     if (!fullName) {
-      setError('Please fill in your name.');
+      const nameLabel = fields.find((f) => f.key === nameFieldKey)?.label ?? 'name';
+      errors[nameFieldKey] = `Please enter the ${nameLabel.toLowerCase()}.`;
+    }
+    if (!email) {
+      errors.email = 'Please enter your email.';
+    } else if (!/^\S+@\S+\.\S+$/.test(email)) {
+      errors.email = 'That email does not look right. Please check it, e.g. name@gmail.com';
+    }
+    if (!password) {
+      errors.password = 'Please create a password.';
+    } else if (password.length < 8) {
+      errors.password = 'Your password should be at least 8 characters.';
+    }
+    if (!confirmPassword) {
+      errors.confirmPassword = 'Please type your password again.';
+    } else if (password !== confirmPassword) {
+      errors.confirmPassword = 'The two passwords do not match.';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
-    if (!/^\S+@\S+\.\S+$/.test(email)) {
-      setError('Please enter a valid email address.');
-      return;
-    }
-    if (password.length < 8) {
-      setError('Password must be at least eight(8) characters long.');
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.');
-      return;
-    }
+    setFieldErrors({});
 
     setSubmitting(true);
     const { data, error: signUpError } = await signUpWithRole({ email, password, fullName, role });
     setSubmitting(false);
 
     if (signUpError) {
-      setError(signUpError.message);
+      setError(friendlyError(signUpError));
       return;
     }
     // No session back means the project requires email confirmation before
@@ -96,7 +115,7 @@ export function SignupFormScreen({ title, subtitle, fields, role, nameFieldKey, 
       <PatternBackground height={380} />
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
           contentContainerStyle={styles.content}
@@ -119,6 +138,7 @@ export function SignupFormScreen({ title, subtitle, fields, role, nameFieldKey, 
               autoCapitalize={field.keyboardType === 'email-address' ? 'none' : 'words'}
               value={values[field.key] ?? ''}
               onChangeText={(text) => setValue(field.key, text)}
+              error={fieldErrors[field.key]}
             />
           ))}
 

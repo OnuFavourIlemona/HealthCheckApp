@@ -8,8 +8,9 @@ import { FadeInUp } from '../components/ui/FadeInUp';
 import { PatternBackground } from '../components/ui/PatternBackground';
 import { SkeletonList } from '../components/ui/Skeleton';
 import {
-  ASSESSMENT_LABELS,
   fetchAssessmentHistory,
+  labelForAssessment,
+  latestPerType,
   normaliseLevel,
   type RiskAssessment,
 } from '../lib/dashboard';
@@ -44,8 +45,10 @@ export function RiskHistoryScreen({ navigation }: Props) {
     })();
   }, []);
 
-  const types = Array.from(new Set(history.map((h) => h.assessment_type)));
-  const visible = filter ? history.filter((h) => h.assessment_type === filter) : history;
+  // One card per condition (the latest), so the list isn't cluttered with repeats.
+  const latest = latestPerType(history);
+  const types = Array.from(new Set(latest.map((h) => h.assessment_type)));
+  const visible = filter ? latest.filter((h) => h.assessment_type === filter) : latest;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -95,7 +98,7 @@ export function RiskHistoryScreen({ navigation }: Props) {
                 onPress={() => setFilter(type)}
               >
                 <Text style={[styles.filterText, filter === type && styles.filterTextActive]}>
-                  {ASSESSMENT_LABELS[type] ?? type}
+                  {labelForAssessment(type)}
                 </Text>
               </Pressable>
             ))}
@@ -106,20 +109,26 @@ export function RiskHistoryScreen({ navigation }: Props) {
             const color = riskLevelColor(level);
             return (
               <FadeInUp key={item.id} index={index}>
-                <View style={styles.card}>
+                <Pressable
+                  style={styles.card}
+                  onPress={() =>
+                    navigation.navigate('RiskPrediction', { assessmentType: item.assessment_type })
+                  }
+                >
                   <View style={[styles.scoreCircle, { borderColor: color }]}>
                     <Text style={[styles.scoreValue, { color }]}>{Math.round(item.score)}</Text>
                   </View>
                   <View style={styles.cardBody}>
                     <Text style={styles.cardTitle}>
-                      {ASSESSMENT_LABELS[item.assessment_type] ?? item.assessment_type}
+                      {labelForAssessment(item.assessment_type)}
                     </Text>
                     <Text style={[styles.cardLevel, { color }]}>
                       {levelLabel(item.risk_level)} risk
                     </Text>
                     <Text style={styles.cardDate}>{formatDate(item.created_at)}</Text>
                   </View>
-                </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                </Pressable>
               </FadeInUp>
             );
           })}

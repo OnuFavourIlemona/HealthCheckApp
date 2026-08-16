@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useNavigation, type CompositeNavigationProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -63,6 +63,7 @@ export function HomeScreen() {
   const [notificationCount, setNotificationCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     // Dev-only: canned scenario in place of live Supabase data, so risk UI
@@ -88,6 +89,16 @@ export function HomeScreen() {
     setRecommendations(recommendationsFor(profileData));
     setNotificationCount(notifications);
     setEmail(sessionData.data.session?.user.email ?? null);
+
+    const userId = sessionData.data.session?.user.id;
+    if (userId) {
+      const { data: avatarRow } = await supabase
+        .from('profiles')
+        .select('avatar_url')
+        .eq('id', userId)
+        .maybeSingle();
+      setAvatarUrl(avatarRow?.avatar_url ?? null);
+    }
   }, []);
 
   useFocusEffect(
@@ -161,6 +172,7 @@ export function HomeScreen() {
         <DashboardHeader
           email={email}
           name={profile?.full_name ?? null}
+          avatarUrl={avatarUrl}
           notificationCount={notificationCount}
           onPressNotifications={() => navigation.navigate('Notifications')}
           onPressAvatar={() => navigation.navigate('Profile')}
@@ -200,6 +212,36 @@ export function HomeScreen() {
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.white} />
         </Tappable>
+
+        {/* Find a medicine near you */}
+        <Tappable style={styles.findMedCard} onPress={() => navigation.navigate('FindMedicine')}>
+          <View style={styles.findMedIconCircle}>
+            <MaterialCommunityIcons name="pill" size={22} color={colors.darkAccentGreen} />
+          </View>
+          <View style={styles.talkTextColumn}>
+            <Text style={styles.findMedTitle}>Find a Medicine</Text>
+            <Text style={styles.findMedSubtitle}>
+              Search a drug and see which pharmacies near you have it in stock.
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.darkAccentGreen} />
+        </Tappable>
+
+        {/* Period tracker — offered to female patients */}
+        {profile?.gender === 'female' ? (
+          <Tappable style={styles.findMedCard} onPress={() => navigation.navigate('PeriodTracker')}>
+            <View style={styles.findMedIconCircle}>
+              <MaterialCommunityIcons name="calendar-heart" size={22} color={colors.darkAccentGreen} />
+            </View>
+            <View style={styles.talkTextColumn}>
+              <Text style={styles.findMedTitle}>Period Tracker</Text>
+              <Text style={styles.findMedSubtitle}>
+                Keep track of your cycle and get a reminder before your next period.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.darkAccentGreen} />
+          </Tappable>
+        ) : null}
 
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionHeader}>Your Health Risk Scores</Text>
@@ -326,6 +368,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  findMedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.pillGreenBg,
+    padding: 16,
+    marginTop: 12,
+  },
+  findMedIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.pillGreenBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  findMedTitle: {
+    fontFamily: fonts.headingSemiBold,
+    fontSize: 16,
+    color: colors.textPrimary,
+  },
+  findMedSubtitle: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 12.5,
+    lineHeight: 17,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
   talkTextColumn: {
     flex: 1,
     marginLeft: 12,
@@ -373,7 +445,9 @@ const styles = StyleSheet.create({
   emptyCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.white,
+    backgroundColor: colors.pillGreenBg,
+    borderWidth: 1,
+    borderColor: colors.pillGreenBorder,
     borderRadius: 14,
     padding: 16,
     marginTop: 14,
@@ -387,7 +461,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: colors.pillGreenBg,
+    backgroundColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PatternBackground } from '../../components/ui/PatternBackground';
+import { friendlyError } from '../../lib/errors';
 import { supabase } from '../../lib/supabase';
 import type { RootStackParamList } from '../../navigation/types';
 import { colors, fonts } from '../../theme';
@@ -27,7 +28,7 @@ export function CheckEmailScreen({ navigation, route }: Props) {
     setResending(false);
 
     if (error) {
-      setMessage({ kind: 'error', text: error.message });
+      setMessage({ kind: 'error', text: friendlyError(error) });
       return;
     }
     setMessage({ kind: 'success', text: 'Confirmation email resent.' });

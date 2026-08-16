@@ -15,6 +15,8 @@ export type HealthProfile = {
   age: number | null;
   gender: string | null;
   bmi: number | null;
+  height_cm: number | null;
+  weight_kg: number | null;
   sleep_hours: number | null;
   smoking: boolean | null;
   family_diabetes: boolean | null;
@@ -26,8 +28,21 @@ export const ASSESSMENT_LABELS: Record<string, string> = {
   diabetes: 'Diabetes',
   hypertension: 'Hypertension',
   stroke: 'Stroke',
+  kidney: 'Kidney Health',
+  liver: 'Liver Health',
+};
+
+// Labels for assessment types that are no longer offered as tiles but may still
+// exist in a user's history (e.g. High Blood Sugar was merged into Diabetes).
+// Kept out of ASSESSMENT_LABELS so they don't reappear as home-screen slides.
+const LEGACY_ASSESSMENT_LABELS: Record<string, string> = {
   high_blood_sugar: 'High Blood Sugar',
 };
+
+/** Friendly label for any assessment type, including retired ones. */
+export function labelForAssessment(type: string): string {
+  return ASSESSMENT_LABELS[type] ?? LEGACY_ASSESSMENT_LABELS[type] ?? type;
+}
 
 export function normaliseLevel(value: string | null | undefined): RiskLevel {
   const upper = (value ?? '').toUpperCase();
@@ -56,20 +71,26 @@ export async function fetchHealthProfile(): Promise<HealthProfile | null> {
   const { data } = await supabase
     .from('profiles')
     .select(
-      'full_name, age, gender, bmi, sleep_hours, smoking, family_diabetes, hypertension, fasting_glucose_mgdl',
+      'full_name, age, gender, bmi, height_cm, weight_kg, sleep_hours, smoking, family_diabetes, hypertension, fasting_glucose_mgdl',
     )
     .eq('id', userId)
     .maybeSingle();
   return (data as HealthProfile) ?? null;
 }
 
-/** Full assessment history, newest first. */
+// Assessment types that were retired (merged elsewhere) and should no longer
+// appear anywhere in the UI, even if old records still exist in the database.
+const RETIRED_ASSESSMENT_TYPES = new Set(['high_blood_sugar']);
+
+/** Full assessment history, newest first (retired types hidden). */
 export async function fetchAssessmentHistory(): Promise<RiskAssessment[]> {
   const { data } = await supabase
     .from('risk_assessments')
     .select('id, assessment_type, score, risk_level, details, created_at')
     .order('created_at', { ascending: false });
-  return (data ?? []) as RiskAssessment[];
+  return ((data ?? []) as RiskAssessment[]).filter(
+    (item) => !RETIRED_ASSESSMENT_TYPES.has(item.assessment_type),
+  );
 }
 
 /** Most recent assessment per condition. */

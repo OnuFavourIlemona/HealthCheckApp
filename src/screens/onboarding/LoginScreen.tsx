@@ -14,6 +14,12 @@ import { AuthHeader } from '../../components/forms/AuthHeader';
 import { FormField } from '../../components/forms/FormField';
 import { ProceedButton } from '../../components/forms/ProceedButton';
 import { PatternBackground } from '../../components/ui/PatternBackground';
+import { friendlyError } from '../../lib/errors';
+import { setHasOnboarded } from '../../lib/onboardingState';
+import { registerForPushNotifications } from '../../lib/pushNotifications';
+import { rescheduleAllHealthReminders } from '../../lib/healthReminders';
+import { refreshPeriodReminders } from '../../lib/periodTracker';
+import { autoEnableRelevantReminders } from '../../lib/autoReminders';
 import { getSessionRole, supabase } from '../../lib/supabase';
 import type { RootStackParamList } from '../../navigation/types';
 import { colors, fonts } from '../../theme';
@@ -25,19 +31,28 @@ export function LoginScreen({ navigation }: Props) {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   const handleLogin = async () => {
     if (submitting) return;
     setError(null);
+    setEmailError(null);
+    setPasswordError(null);
 
-    if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
-      setError('Please enter a valid email address.');
-      return;
+    let hasFieldError = false;
+    if (!email.trim()) {
+      setEmailError('Please enter your email.');
+      hasFieldError = true;
+    } else if (!/^\S+@\S+\.\S+$/.test(email.trim())) {
+      setEmailError('That email does not look right. Please check it, e.g. name@gmail.com');
+      hasFieldError = true;
     }
     if (!password) {
-      setError('Please enter your password.');
-      return;
+      setPasswordError('Please enter your password.');
+      hasFieldError = true;
     }
+    if (hasFieldError) return;
 
     setSubmitting(true);
     const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -47,11 +62,24 @@ export function LoginScreen({ navigation }: Props) {
 
     if (signInError) {
       setSubmitting(false);
-      setError(signInError.message);
+      setError(friendlyError(signInError));
       return;
     }
 
+    // getSessionRole() signs a deactivated account straight back out, so check
+    // it before doing any of the sign-in side effects below.
     const role = await getSessionRole();
+    if (!role) {
+      setSubmitting(false);
+      setError('This account has been deleted. Contact support if this was not you.');
+      return;
+    }
+
+    await setHasOnboarded();
+    void registerForPushNotifications();
+    void rescheduleAllHealthReminders();
+    void refreshPeriodReminders();
+    void autoEnableRelevantReminders();
     setSubmitting(false);
     const destination =
       role === 'pharmacy' ? 'PharmacyTabs' : role === 'patient' ? 'MainTabs' : 'ProTabs';
@@ -66,7 +94,7 @@ export function LoginScreen({ navigation }: Props) {
       <PatternBackground height={380} />
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
           contentContainerStyle={styles.content}
@@ -84,15 +112,31 @@ export function LoginScreen({ navigation }: Props) {
             keyboardType="email-address"
             autoCapitalize="none"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(v) => {
+              setEmail(v);
+              if (emailError) setEmailError(null);
+            }}
+            error={emailError}
           />
           <FormField
             label="Password"
             placeholder="********"
             secureTextEntry
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(v) => {
+              setPassword(v);
+              if (passwordError) setPasswordError(null);
+            }}
+            error={passwordError}
           />
+
+          <Pressable
+            style={styles.forgotRow}
+            onPress={() => navigation.navigate('ForgotPassword')}
+            hitSlop={8}
+          >
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </Pressable>
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -139,6 +183,16 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 28,
     lineHeight: 21,
+  },
+  forgotRow: {
+    alignSelf: 'flex-end',
+    marginTop: -8,
+    marginBottom: 18,
+  },
+  forgotText: {
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 13,
+    color: colors.primaryGreen,
   },
   errorText: {
     fontFamily: fonts.bodySemiBold,

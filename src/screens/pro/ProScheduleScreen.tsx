@@ -105,9 +105,8 @@ export function ProScheduleScreen() {
 
   const handleAddReminder = async (
     title: string,
-    hour12: number,
+    hour24: number,
     minute: number,
-    ampm: 'AM' | 'PM',
     notes: string,
   ) => {
     setAddError(null);
@@ -115,7 +114,6 @@ export function ProScheduleScreen() {
 
     const remindAt = new Date();
     remindAt.setDate(remindAt.getDate() + selectedOffset);
-    const hour24 = ampm === 'PM' ? (hour12 === 12 ? 12 : hour12 + 12) : hour12 === 12 ? 0 : hour12;
     remindAt.setHours(hour24, minute, 0, 0);
 
     const { reminder, error } = await addReminder(title, remindAt, notes);
@@ -129,8 +127,19 @@ export function ProScheduleScreen() {
   };
 
   const handleToggleReminder = async (reminder: PractitionerReminder) => {
+    // Flip it on screen immediately -- waiting on the network round-trip
+    // made this feel unresponsive. Revert if the update actually fails.
+    const optimistic: PractitionerReminder = {
+      ...reminder,
+      completed_at: reminder.completed_at ? null : new Date().toISOString(),
+    };
+    setReminders((prev) => prev.map((r) => (r.id === reminder.id ? optimistic : r)));
+
     const updated = await toggleReminderComplete(reminder);
-    if (!updated) return;
+    if (!updated) {
+      setReminders((prev) => prev.map((r) => (r.id === reminder.id ? reminder : r)));
+      return;
+    }
     setReminders((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
   };
 

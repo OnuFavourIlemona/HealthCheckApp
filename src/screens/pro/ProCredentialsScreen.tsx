@@ -14,7 +14,10 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { DateOfBirthField } from '../../components/forms/DateOfBirthField';
 import { PatternBackground } from '../../components/ui/PatternBackground';
+import { ageFromDob, dobPartsFromIso, dobToIso, parseDob } from '../../lib/dateOfBirth';
+import { friendlyError } from '../../lib/errors';
 import { supabase } from '../../lib/supabase';
 import type { RootStackParamList } from '../../navigation/types';
 import { colors, fonts } from '../../theme';
@@ -26,6 +29,10 @@ const SPECIALTIES = ['Physician', 'Dentist', 'Nurse', 'Pharmacist', 'Physiothera
 export function ProCredentialsScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(true);
   const [specialty, setSpecialty] = useState<string | null>(null);
+  const [customSpecialty, setCustomSpecialty] = useState('');
+  const [dobDay, setDobDay] = useState('');
+  const [dobMonth, setDobMonth] = useState('');
+  const [dobYear, setDobYear] = useState('');
   const [currentlyPracticing, setCurrentlyPracticing] = useState<boolean | null>(null);
   const [workplace, setWorkplace] = useState('');
   const [yearsOfExperience, setYearsOfExperience] = useState('');
@@ -39,6 +46,16 @@ export function ProCredentialsScreen({ navigation }: Props) {
   const [uploadingWorkId, setUploadingWorkId] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ kind: 'error' | 'success'; text: string } | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const clearFieldError = (key: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
 
   useEffect(() => {
     (async () => {
@@ -51,7 +68,7 @@ export function ProCredentialsScreen({ navigation }: Props) {
       const { data } = await supabase
         .from('profiles')
         .select(
-          'professional_id, license_path, license_submitted_at, is_verified, verification_notes, specialty, currently_practicing, workplace, work_id_path, years_of_experience',
+          'professional_id, license_path, license_submitted_at, is_verified, verification_notes, specialty, currently_practicing, workplace, work_id_path, years_of_experience, date_of_birth',
         )
         .eq('id', userId)
         .maybeSingle();
@@ -61,11 +78,24 @@ export function ProCredentialsScreen({ navigation }: Props) {
         setSubmittedAt(data.license_submitted_at ?? null);
         setIsVerified(data.is_verified ?? false);
         setNotes(data.verification_notes ?? null);
-        setSpecialty(data.specialty ?? null);
+        if (data.specialty && !SPECIALTIES.includes(data.specialty)) {
+          // A previously saved free-text field ("Other") isn't one of the
+          // fixed chips -- select Other and prefill what they typed before.
+          setSpecialty('Other');
+          setCustomSpecialty(data.specialty);
+        } else {
+          setSpecialty(data.specialty ?? null);
+        }
         setCurrentlyPracticing(data.currently_practicing ?? null);
         setWorkplace(data.workplace ?? '');
         setWorkIdPath(data.work_id_path ?? null);
         setYearsOfExperience(data.years_of_experience != null ? String(data.years_of_experience) : '');
+        if (data.date_of_birth) {
+          const parts = dobPartsFromIso(data.date_of_birth);
+          setDobDay(parts.day);
+          setDobMonth(parts.month);
+          setDobYear(parts.year);
+        }
       }
       setLoading(false);
     })();
@@ -75,6 +105,7 @@ export function ProCredentialsScreen({ navigation }: Props) {
     kind: 'license' | 'work_id',
     setPath: (path: string) => void,
     setUploading: (v: boolean) => void,
+    errorKey: string,
   ) => {
     setMessage(null);
     const result = await DocumentPicker.getDocumentAsync({
@@ -106,10 +137,11 @@ export function ProCredentialsScreen({ navigation }: Props) {
         });
 
       if (uploadError) {
-        setMessage({ kind: 'error', text: uploadError.message });
+        setMessage({ kind: 'error', text: friendlyError(uploadError) });
         return;
       }
       setPath(path);
+      clearFieldError(errorKey);
       setMessage({
         kind: 'success',
         text: kind === 'license' ? 'Licence uploaded. Submit when ready.' : 'Work ID uploaded. Submit when ready.',
@@ -124,36 +156,52 @@ export function ProCredentialsScreen({ navigation }: Props) {
   const handleSubmit = async () => {
     if (saving) return;
     setMessage(null);
+    setFieldErrors({});
+
+    const errors: Record<string, string> = {};
 
     if (!specialty) {
-      setMessage({ kind: 'error', text: 'Please choose your medical line.' });
-      return;
+      errors.specialty = 'Please choose your medical line.';
+    } else if (specialty === 'Other' && !customSpecialty.trim()) {
+      errors.customSpecialty = 'Please tell us your specific medical field.';
     }
-    if (currentlyPracticing === null) {
-      setMessage({ kind: 'error', text: 'Please let us know if you are currently practicing.' });
-      return;
+
+    const dob = parseDob(dobDay, dobMonth, dobYear);
+    if (!dob) {
+      errors.dob = 'Please enter your full date of birth.';
+    } else {
+      const age = ageFromDob(dob);
+      if (age < 18 || age > 100) errors.dob = 'Please double-check your date of birth.';
     }
-    if (currentlyPracticing && !workplace.trim()) {
-      setMessage({ kind: 'error', text: 'Please tell us where you currently practice.' });
-      return;
-    }
+
     const yearsNum = Number(yearsOfExperience);
     if (!yearsOfExperience.trim() || !Number.isFinite(yearsNum) || yearsNum < 0 || yearsNum > 70) {
-      setMessage({ kind: 'error', text: 'Please enter a valid number of years of experience.' });
-      return;
+      errors.years = 'Enter your years of experience (0 to 70).';
     }
+
+    if (currentlyPracticing === null) {
+      errors.practicing = 'Please let us know if you are currently practicing.';
+    } else if (currentlyPracticing && !workplace.trim()) {
+      errors.workplace = 'Please tell us where you currently practice.';
+    }
+
     if (!licenseNumber.trim()) {
-      setMessage({ kind: 'error', text: 'Please enter your practising licence number.' });
-      return;
+      errors.license = 'Please enter your practising licence number.';
     }
     if (!licensePath) {
-      setMessage({ kind: 'error', text: 'Please upload a copy of your licence.' });
-      return;
+      errors.licenseDoc = 'Please upload a copy of your licence.';
     }
     if (!workIdPath) {
-      setMessage({ kind: 'error', text: 'Please upload a photo of your work ID.' });
+      errors.workId = 'Please upload a photo of your work ID.';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setMessage({ kind: 'error', text: 'Please fix the highlighted fields above.' });
       return;
     }
+    if (!dob) return; // Guarded above; keeps the type non-null below.
+    const ageNum = ageFromDob(dob);
 
     const { data: sessionData } = await supabase.auth.getSession();
     const userId = sessionData.session?.user.id;
@@ -164,10 +212,13 @@ export function ProCredentialsScreen({ navigation }: Props) {
 
     setSaving(true);
     const now = new Date().toISOString();
+    const resolvedSpecialty = specialty === 'Other' ? customSpecialty.trim() : specialty;
     const { error } = await supabase
       .from('profiles')
       .update({
-        specialty,
+        specialty: resolvedSpecialty,
+        age: ageNum,
+        date_of_birth: dobToIso(dob),
         currently_practicing: currentlyPracticing,
         workplace: workplace.trim() || null,
         years_of_experience: yearsNum,
@@ -180,12 +231,14 @@ export function ProCredentialsScreen({ navigation }: Props) {
     setSaving(false);
 
     if (error) {
-      setMessage({ kind: 'error', text: error.message });
+      setMessage({ kind: 'error', text: friendlyError(error) });
       return;
     }
     setSubmittedAt(now);
     setMessage({ kind: 'success', text: 'Sent for review.' });
   };
+
+  const liveDob = parseDob(dobDay, dobMonth, dobYear);
 
   if (loading) {
     return (
@@ -200,7 +253,7 @@ export function ProCredentialsScreen({ navigation }: Props) {
       <PatternBackground />
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
           contentContainerStyle={styles.content}
@@ -263,7 +316,11 @@ export function ProCredentialsScreen({ navigation }: Props) {
                 <Pressable
                   key={option}
                   style={[styles.chip, specialty === option && styles.chipActive]}
-                  onPress={() => !isVerified && setSpecialty(option)}
+                  onPress={() => {
+                    if (isVerified) return;
+                    setSpecialty(option);
+                    clearFieldError('specialty');
+                  }}
                 >
                   <Text style={[styles.chipText, specialty === option && styles.chipTextActive]}>
                     {option}
@@ -271,19 +328,79 @@ export function ProCredentialsScreen({ navigation }: Props) {
                 </Pressable>
               ))}
             </View>
+            {specialty === 'Other' ? (
+              <TextInput
+                style={[
+                  styles.input,
+                  styles.customSpecialtyInput,
+                  fieldErrors.customSpecialty ? styles.inputError : null,
+                ]}
+                placeholder="Tell us your specific medical field"
+                placeholderTextColor={colors.inputPlaceholder}
+                value={customSpecialty}
+                onChangeText={(v) => {
+                  setCustomSpecialty(v);
+                  clearFieldError('customSpecialty');
+                }}
+                editable={!isVerified}
+              />
+            ) : null}
+            {fieldErrors.specialty || fieldErrors.customSpecialty ? (
+              <View style={styles.inlineErrorRow}>
+                <Ionicons name="alert-circle" size={15} color={colors.danger} />
+                <Text style={styles.inlineErrorText}>
+                  {fieldErrors.specialty ?? fieldErrors.customSpecialty}
+                </Text>
+              </View>
+            ) : null}
           </View>
+
+          <DateOfBirthField
+            day={dobDay}
+            month={dobMonth}
+            year={dobYear}
+            onChangeDay={(v) => {
+              setDobDay(v);
+              clearFieldError('dob');
+            }}
+            onChangeMonth={(v) => {
+              setDobMonth(v);
+              clearFieldError('dob');
+            }}
+            onChangeYear={(v) => {
+              setDobYear(v);
+              clearFieldError('dob');
+            }}
+            ageHint={liveDob ? `Age ${ageFromDob(liveDob)}` : null}
+            editable={!isVerified}
+          />
+          {fieldErrors.dob ? (
+            <View style={styles.inlineErrorRow}>
+              <Ionicons name="alert-circle" size={15} color={colors.danger} />
+              <Text style={styles.inlineErrorText}>{fieldErrors.dob}</Text>
+            </View>
+          ) : null}
 
           <View style={styles.fieldBlock}>
             <Text style={styles.fieldLabel}>Years of experience</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, fieldErrors.years ? styles.inputError : null]}
               placeholder="e.g. 8"
               placeholderTextColor={colors.inputPlaceholder}
               keyboardType="numeric"
               value={yearsOfExperience}
-              onChangeText={setYearsOfExperience}
+              onChangeText={(v) => {
+                setYearsOfExperience(v);
+                clearFieldError('years');
+              }}
               editable={!isVerified}
             />
+            {fieldErrors.years ? (
+              <View style={styles.inlineErrorRow}>
+                <Ionicons name="alert-circle" size={15} color={colors.danger} />
+                <Text style={styles.inlineErrorText}>{fieldErrors.years}</Text>
+              </View>
+            ) : null}
           </View>
 
           <View style={styles.fieldBlock}>
@@ -291,7 +408,11 @@ export function ProCredentialsScreen({ navigation }: Props) {
             <View style={styles.yesNoRow}>
               <Pressable
                 style={[styles.yesNoButton, currentlyPracticing === true && styles.yesNoActive]}
-                onPress={() => !isVerified && setCurrentlyPracticing(true)}
+                onPress={() => {
+                  if (isVerified) return;
+                  setCurrentlyPracticing(true);
+                  clearFieldError('practicing');
+                }}
               >
                 <Text
                   style={[styles.yesNoText, currentlyPracticing === true && styles.yesNoTextActive]}
@@ -301,7 +422,11 @@ export function ProCredentialsScreen({ navigation }: Props) {
               </Pressable>
               <Pressable
                 style={[styles.yesNoButton, currentlyPracticing === false && styles.yesNoActive]}
-                onPress={() => !isVerified && setCurrentlyPracticing(false)}
+                onPress={() => {
+                  if (isVerified) return;
+                  setCurrentlyPracticing(false);
+                  clearFieldError('practicing');
+                }}
               >
                 <Text
                   style={[styles.yesNoText, currentlyPracticing === false && styles.yesNoTextActive]}
@@ -310,43 +435,72 @@ export function ProCredentialsScreen({ navigation }: Props) {
                 </Text>
               </Pressable>
             </View>
+            {fieldErrors.practicing ? (
+              <View style={styles.inlineErrorRow}>
+                <Ionicons name="alert-circle" size={15} color={colors.danger} />
+                <Text style={styles.inlineErrorText}>{fieldErrors.practicing}</Text>
+              </View>
+            ) : null}
           </View>
 
           {currentlyPracticing ? (
             <View style={styles.fieldBlock}>
               <Text style={styles.fieldLabel}>Where do you currently practice?</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, fieldErrors.workplace ? styles.inputError : null]}
                 placeholder="e.g. Lagos University Teaching Hospital"
                 placeholderTextColor={colors.inputPlaceholder}
                 value={workplace}
-                onChangeText={setWorkplace}
+                onChangeText={(v) => {
+                  setWorkplace(v);
+                  clearFieldError('workplace');
+                }}
                 editable={!isVerified}
               />
+              {fieldErrors.workplace ? (
+                <View style={styles.inlineErrorRow}>
+                  <Ionicons name="alert-circle" size={15} color={colors.danger} />
+                  <Text style={styles.inlineErrorText}>{fieldErrors.workplace}</Text>
+                </View>
+              ) : null}
             </View>
           ) : null}
 
           <View style={styles.fieldBlock}>
             <Text style={styles.fieldLabel}>Practising Licence Number</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, fieldErrors.license ? styles.inputError : null]}
               placeholder="MDCN/12345 or PCN/REG/12345"
               placeholderTextColor={colors.inputPlaceholder}
               autoCapitalize="characters"
               value={licenseNumber}
-              onChangeText={setLicenseNumber}
+              onChangeText={(v) => {
+                setLicenseNumber(v);
+                clearFieldError('license');
+              }}
               editable={!isVerified}
             />
-            <Text style={styles.fieldHint}>
-              This is the number given by your regulatory body, such as MDCN, NMCN, or PCN.
-            </Text>
+            {fieldErrors.license ? (
+              <View style={styles.inlineErrorRow}>
+                <Ionicons name="alert-circle" size={15} color={colors.danger} />
+                <Text style={styles.inlineErrorText}>{fieldErrors.license}</Text>
+              </View>
+            ) : (
+              <Text style={styles.fieldHint}>
+                This is the number given by your regulatory body, such as MDCN, NMCN, or PCN.
+              </Text>
+            )}
           </View>
 
           <View style={styles.fieldBlock}>
             <Text style={styles.fieldLabel}>Licence Document</Text>
             <Pressable
-              style={[styles.actionButton, isVerified && styles.actionButtonDisabled]}
-              onPress={() => uploadDocument('license', setLicensePath, setUploadingLicense)}
+              style={[
+                styles.actionButton,
+                isVerified && styles.actionButtonDisabled,
+                fieldErrors.licenseDoc ? styles.actionButtonError : null,
+              ]}
+              onPress={() => uploadDocument('license', setLicensePath, setUploadingLicense, 'licenseDoc')}
               disabled={isVerified}
             >
               {uploadingLicense ? (
@@ -358,14 +512,25 @@ export function ProCredentialsScreen({ navigation }: Props) {
                 {licensePath ? 'Licence uploaded. Tap to replace' : 'Upload licence (PDF or photo)'}
               </Text>
             </Pressable>
-            <Text style={styles.fieldHint}>We keep this private and only use it to check your credentials.</Text>
+            {fieldErrors.licenseDoc ? (
+              <View style={styles.inlineErrorRow}>
+                <Ionicons name="alert-circle" size={15} color={colors.danger} />
+                <Text style={styles.inlineErrorText}>{fieldErrors.licenseDoc}</Text>
+              </View>
+            ) : (
+              <Text style={styles.fieldHint}>We keep this private and only use it to check your credentials.</Text>
+            )}
           </View>
 
           <View style={styles.fieldBlock}>
             <Text style={styles.fieldLabel}>Work ID</Text>
             <Pressable
-              style={[styles.actionButton, isVerified && styles.actionButtonDisabled]}
-              onPress={() => uploadDocument('work_id', setWorkIdPath, setUploadingWorkId)}
+              style={[
+                styles.actionButton,
+                isVerified && styles.actionButtonDisabled,
+                fieldErrors.workId ? styles.actionButtonError : null,
+              ]}
+              onPress={() => uploadDocument('work_id', setWorkIdPath, setUploadingWorkId, 'workId')}
               disabled={isVerified}
             >
               {uploadingWorkId ? (
@@ -377,10 +542,17 @@ export function ProCredentialsScreen({ navigation }: Props) {
                 {workIdPath ? 'Work ID uploaded. Tap to replace' : 'Upload your work ID (PDF or photo)'}
               </Text>
             </Pressable>
-            <Text style={styles.fieldHint}>
-              A photo of your hospital, clinic, or staff ID card. This helps us confirm you're
-              currently practising.
-            </Text>
+            {fieldErrors.workId ? (
+              <View style={styles.inlineErrorRow}>
+                <Ionicons name="alert-circle" size={15} color={colors.danger} />
+                <Text style={styles.inlineErrorText}>{fieldErrors.workId}</Text>
+              </View>
+            ) : (
+              <Text style={styles.fieldHint}>
+                A photo of your hospital, clinic, or staff ID card. This helps us confirm you're
+                currently practising.
+              </Text>
+            )}
           </View>
 
           {message ? (
@@ -565,6 +737,25 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.textPrimary,
   },
+  customSpecialtyInput: {
+    marginTop: 10,
+  },
+  inputError: {
+    borderColor: colors.danger,
+  },
+  inlineErrorRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: 8,
+  },
+  inlineErrorText: {
+    flex: 1,
+    fontFamily: fonts.bodyRegular,
+    fontSize: 12.5,
+    lineHeight: 17,
+    color: colors.danger,
+  },
   fieldHint: {
     fontFamily: fonts.bodyRegular,
     fontSize: 12.5,
@@ -584,6 +775,9 @@ const styles = StyleSheet.create({
   },
   actionButtonDisabled: {
     opacity: 0.5,
+  },
+  actionButtonError: {
+    borderColor: colors.danger,
   },
   actionButtonText: {
     fontFamily: fonts.bodySemiBold,

@@ -10,8 +10,9 @@ import { BounceIn } from '../components/ui/BounceIn';
 import { FadeInUp } from '../components/ui/FadeInUp';
 import { PatternBackground } from '../components/ui/PatternBackground';
 import { Tappable } from '../components/ui/Tappable';
-import { ASSESSMENT_LABELS, normaliseLevel, type RiskAssessment } from '../lib/dashboard';
+import { labelForAssessment, normaliseLevel, type RiskAssessment } from '../lib/dashboard';
 import { demoData, getDemoScenario } from '../lib/devSimulation';
+import { useCountUp } from '../lib/useCountUp';
 import type { StoredFactor } from '../lib/riskFactors';
 import { supabase } from '../lib/supabase';
 import type { RootStackParamList } from '../navigation/types';
@@ -52,8 +53,57 @@ type AssessmentDetails = {
   fasting_glucose_mgdl?: number | null;
   /** Present when this assessment came from the real prediction API — see predictionApi.ts. Absent means it came from the local heuristic, and deriveFactors() below reconstructs the breakdown from the raw fields above instead. */
   factors?: StoredFactor[];
-  source?: 'api' | 'heuristic';
+  /** Which engine produced this result — drives the "based on" provenance shown to build patient trust. */
+  source?: 'api' | 'heuristic' | 'fsrp' | 'nidrs' | 'findrisc' | 'glucose_reading';
+  reading_category?: 'normal' | 'prediabetes' | 'diabetes_range' | null;
 };
+
+/**
+ * Provenance shown on the result so patients know the assessment rests on a
+ * validated, published tool — not a guess. Resolved by the engine that produced
+ * the result (details.source), falling back to the assessment type.
+ */
+type Provenance = { tool: string; body: string };
+
+const PROVENANCE_BY_SOURCE: Record<string, Provenance> = {
+  findrisc: {
+    tool: 'FINDRISC, the Finnish Diabetes Risk Score',
+    body: 'This is a well-known test that doctors around the world use to check the chance of diabetes. It has been tested on African patients and works well for us, so you can trust what it shows.',
+  },
+  glucose_reading: {
+    tool: 'the same blood sugar levels doctors use',
+    body: 'We checked the blood sugar number you gave against the same levels doctors and hospitals use to tell if sugar is normal, borderline, or high.',
+  },
+  fsrp: {
+    tool: 'the Framingham Stroke Risk study',
+    body: 'This comes from one of the longest-running heart health studies in the world. Doctors everywhere use it to check the chance of a stroke.',
+  },
+  nidrs: {
+    tool: 'the Nigerian Diet Risk Score',
+    body: 'This one was created and tested right here in Nigeria, using the foods we actually eat. It was built for Nigerians by researchers studying our health.',
+  },
+  kidney: {
+    tool: "Nigeria's own kidney screening findings",
+    body: 'This check follows the risk factors found in Nigeria\'s national kidney screening by the Association of Nephrology: age, high blood pressure, diabetes, and the local habits doctors warn about, like frequent painkillers, herbal mixtures, heavy salt, and low water. It is an early warning to get your kidneys tested, not a diagnosis.',
+  },
+  liver: {
+    tool: 'the causes Nigerian liver doctors see most',
+    body: 'This check follows what Nigerian hospital studies and liver doctors report as the main causes of liver disease here: hepatitis B and C, alcohol, herbal mixtures, painkiller misuse, and fatty liver from weight and diet. It is an early warning to get a liver test, not a diagnosis.',
+  },
+};
+
+const PROVENANCE_BY_TYPE: Record<string, Provenance> = {
+  diabetes: PROVENANCE_BY_SOURCE.findrisc,
+  high_blood_sugar: PROVENANCE_BY_SOURCE.findrisc,
+  stroke: PROVENANCE_BY_SOURCE.fsrp,
+  hypertension: PROVENANCE_BY_SOURCE.nidrs,
+  kidney: PROVENANCE_BY_SOURCE.kidney,
+};
+
+function getProvenance(source: string | undefined, assessmentType: string): Provenance | null {
+  if (source && PROVENANCE_BY_SOURCE[source]) return PROVENANCE_BY_SOURCE[source];
+  return PROVENANCE_BY_TYPE[assessmentType] ?? null;
+}
 
 // Sentence phrasing per condition — "developing a stroke" reads oddly, so a
 // few conditions get a tailored verb phrase instead of the generic template.
@@ -62,6 +112,8 @@ const CONDITION_PHRASE: Record<string, string> = {
   hypertension: 'developing hypertension',
   stroke: 'having a stroke',
   high_blood_sugar: 'developing high blood sugar',
+  kidney: 'developing kidney disease',
+  liver: 'developing liver disease',
 };
 
 function bmiCategory(bmi: number): string {
@@ -191,25 +243,6 @@ function deriveFactors(details: AssessmentDetails | null): DerivedFactor[] {
 }
 
 /** Ramps a number from 0 to `target` once on mount — used to sweep the ring in and count the label up together. */
-function useCountUp(target: number, duration = 900): number {
-  const [value, setValue] = useState(0);
-
-  useEffect(() => {
-    const anim = new Animated.Value(0);
-    const listenerId = anim.addListener(({ value: v }) => setValue(v));
-    Animated.timing(anim, {
-      toValue: target,
-      duration,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: false,
-    }).start();
-    return () => anim.removeListener(listenerId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target]);
-
-  return value;
-}
-
 function RiskRing({ percent, size = 108, strokeWidth = 10 }: { percent: number; size?: number; strokeWidth?: number }) {
   const r = (size - strokeWidth) / 2;
   const c = size / 2;
@@ -321,12 +354,13 @@ export function RiskPredictionScreen({ navigation, route }: Props) {
   }, [assessmentType]);
 
   const animatedPercent = useCountUp(assessment?.score ?? 0);
-  const conditionLabel = ASSESSMENT_LABELS[assessmentType] ?? assessmentType;
+  const conditionLabel = labelForAssessment(assessmentType);
   const conditionPhrase = CONDITION_PHRASE[assessmentType] ?? `developing ${conditionLabel.toLowerCase()}`;
   const level = assessment ? normaliseLevel(assessment.risk_level) : 'LOW';
   const levelWord = level === 'HIGH' ? 'High' : level === 'MODERATE' ? 'Moderate' : 'Low';
   const levelColor = riskLevelColor(level);
   const factorDetails = (assessment?.details as AssessmentDetails | null) ?? null;
+  const provenance = getProvenance(factorDetails?.source, assessmentType);
   // Real API-sourced factors (real SHAP contributions) win when present;
   // older/heuristic-sourced assessments fall back to the local reconstruction.
   const factors: DerivedFactor[] = factorDetails?.factors
@@ -441,6 +475,16 @@ export function RiskPredictionScreen({ navigation, route }: Props) {
                 medical diagnosis.
               </Text>
 
+              {provenance ? (
+                <View style={styles.sourceBanner}>
+                  <MaterialCommunityIcons name="book-check-outline" size={26} color={colors.darkAccentGreen} />
+                  <View style={styles.aboutTextColumn}>
+                    <Text style={styles.sourceTitle}>Based on {provenance.tool}</Text>
+                    <Text style={styles.aboutBody}>{provenance.body}</Text>
+                  </View>
+                </View>
+              ) : null}
+
               <View style={styles.aboutBanner}>
                 <MaterialCommunityIcons name="shield-check" size={26} color={colors.darkAccentGreen} />
                 <View style={styles.aboutTextColumn}>
@@ -459,6 +503,11 @@ export function RiskPredictionScreen({ navigation, route }: Props) {
                   Shapley Additive Explanations (SHAP) help show how each factor contributes to
                   your risk score.
                 </Text>
+                {provenance ? (
+                  <Text style={[styles.shapText, styles.shapSourceText]}>
+                    Each thing below, and how much it adds to your risk, comes from {provenance.tool}.
+                  </Text>
+                ) : null}
                 {shapExpanded ? (
                   <Text style={[styles.shapText, styles.shapExpandedText]}>
                     Each factor below is weighted by how much it raises or lowers your estimated
@@ -558,6 +607,13 @@ export function RiskPredictionScreen({ navigation, route }: Props) {
                   </FadeInUp>
                 ))
               )}
+              <Tappable
+                style={styles.planButton}
+                onPress={() => navigation.navigate('RecommendationDetail', { key: assessmentType })}
+              >
+                <MaterialCommunityIcons name="clipboard-list-outline" size={18} color={colors.darkAccentGreen} />
+                <Text style={styles.planButtonText}>See your full plan and daily reminders</Text>
+              </Tappable>
               <Tappable
                 style={styles.talkButton}
                 onPress={() => navigation.navigate('RequestConsultation')}
@@ -800,6 +856,11 @@ const styles = StyleSheet.create({
   shapExpandedText: {
     marginTop: 8,
   },
+  shapSourceText: {
+    marginTop: 8,
+    fontFamily: fonts.headingSemiBold,
+    color: colors.darkAccentGreen,
+  },
   learnMoreRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -953,6 +1014,21 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     color: colors.white,
   },
+  planButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.pillGreenBg,
+    borderRadius: 24,
+    height: 50,
+    marginTop: 16,
+  },
+  planButtonText: {
+    fontFamily: fonts.headingSemiBold,
+    fontSize: 14.5,
+    color: colors.darkAccentGreen,
+  },
   aboutBanner: {
     flexDirection: 'row',
     gap: 12,
@@ -960,6 +1036,21 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     marginTop: 16,
+  },
+  sourceBanner: {
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: colors.pillGreenBg,
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 16,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.darkAccentGreen,
+  },
+  sourceTitle: {
+    fontFamily: fonts.headingSemiBold,
+    fontSize: 14,
+    color: colors.darkAccentGreen,
   },
   aboutTextColumn: {
     flex: 1,

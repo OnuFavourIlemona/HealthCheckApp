@@ -140,6 +140,9 @@ export function FindCareScreen() {
   const [livePharmacies, setLivePharmacies] = useState<CarePlace[]>([]);
   const [dbPharmacies, setDbPharmacies] = useState<CarePlace[]>([]);
   const [lookupFailed, setLookupFailed] = useState(false);
+  // While a finger is on the map, stop the page scrolling so the drag pans
+  // the map instead of the list.
+  const [mapInteracting, setMapInteracting] = useState(false);
 
   useEffect(() => {
     if (route.params?.category) setCategory(route.params.category);
@@ -252,14 +255,36 @@ export function FindCareScreen() {
     );
   };
 
+  // Our results come from OpenStreetMap, which is less complete in Nigeria than
+  // Google. This lets the user cross-check the same search on Google Maps.
+  const openGoogleMapsSearch = () => {
+    const term = category === 'hospitals' ? 'hospitals' : 'pharmacy';
+    // The path-based form opens Google Maps already centred on the user and runs
+    // the search immediately, so the results (e.g. hospitals) show on open. When
+    // there's no location yet, fall back to a "near me" query.
+    const url = userCoords
+      ? `https://www.google.com/maps/search/${encodeURIComponent(term)}/@${userCoords.latitude},${userCoords.longitude},14z`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${term} near me`)}`;
+    Linking.openURL(url);
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <PatternBackground />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={!mapInteracting}
+      >
         <Text style={styles.screenTitle}>Find Care</Text>
 
         {/* Map preview */}
-        <View style={styles.mapCard}>
+        <View
+          style={styles.mapCard}
+          onTouchStart={() => setMapInteracting(true)}
+          onTouchEnd={() => setMapInteracting(false)}
+          onTouchCancel={() => setMapInteracting(false)}
+        >
           <NearbyMap userCoords={userCoords} places={places} />
 
           <View style={styles.countChip}>
@@ -314,6 +339,12 @@ export function FindCareScreen() {
             </Text>
           </Pressable>
         </View>
+
+        <Pressable style={styles.googleMapsButton} onPress={openGoogleMapsSearch}>
+          <MaterialCommunityIcons name="google-maps" size={17} color={colors.darkAccentGreen} />
+          <Text style={styles.googleMapsButtonText}>Not seeing a place? Search on Google Maps</Text>
+          <Ionicons name="open-outline" size={15} color={colors.textMuted} />
+        </Pressable>
 
         {searching ? (
           <View style={styles.searchingRow}>
@@ -466,6 +497,23 @@ const styles = StyleSheet.create({
   },
   toggleTextActive: {
     color: colors.white,
+  },
+  googleMapsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 12,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+  },
+  googleMapsButtonText: {
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 13,
+    color: colors.darkAccentGreen,
   },
   searchingRow: {
     flexDirection: 'row',

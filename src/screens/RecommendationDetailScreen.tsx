@@ -2,13 +2,20 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ComponentProps } from 'react';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FadeInUp } from '../components/ui/FadeInUp';
 import { PatternBackground } from '../components/ui/PatternBackground';
 import { fetchHealthProfile, type HealthProfile } from '../lib/dashboard';
 import { demoData, getDemoScenario } from '../lib/devSimulation';
+import {
+  disableHealthReminder,
+  enableHealthReminder,
+  fetchHealthReminders,
+  type HealthReminderRow,
+} from '../lib/healthReminders';
 import { planFor, type RecommendationPlan } from '../lib/recommendationPlans';
+import type { PlanReminder } from '../lib/healthReminders';
 import type { RootStackParamList } from '../navigation/types';
 import { colors, fonts } from '../theme';
 
@@ -21,12 +28,30 @@ const HERO_ICONS: Record<string, MCIName> = {
   bmi: 'scale-bathroom',
   smoking: 'smoking-off',
   bp: 'heart-pulse',
+  diabetes: 'water-plus',
+  hypertension: 'heart-pulse',
+  stroke: 'brain',
+  kidney: 'water-outline',
+  liver: 'medical-bag',
 };
+
+function formatTimes(times: { hour: number; minute: number }[]): string {
+  return times
+    .map((t) => {
+      const h12 = t.hour % 12 === 0 ? 12 : t.hour % 12;
+      const ampm = t.hour < 12 ? 'am' : 'pm';
+      const mm = t.minute.toString().padStart(2, '0');
+      return `${h12}:${mm}${ampm}`;
+    })
+    .join(' and ');
+}
 
 export function RecommendationDetailScreen({ navigation, route }: Props) {
   const { key } = route.params;
   const [profile, setProfile] = useState<HealthProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reminderRows, setReminderRows] = useState<HealthReminderRow[]>([]);
+  const [reminderBusy, setReminderBusy] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -36,10 +61,29 @@ export function RecommendationDetailScreen({ navigation, route }: Props) {
         setLoading(false);
         return;
       }
-      setProfile(await fetchHealthProfile());
+      const [prof, reminders] = await Promise.all([fetchHealthProfile(), fetchHealthReminders(key)]);
+      setProfile(prof);
+      setReminderRows(reminders);
       setLoading(false);
     })();
-  }, []);
+  }, [key]);
+
+  const enabledKeys = new Set(reminderRows.map((r) => r.reminder_key));
+
+  const onToggleReminder = async (reminder: PlanReminder, on: boolean) => {
+    setReminderBusy(reminder.key);
+    if (on) {
+      const row = await enableHealthReminder(key, reminder);
+      if (row) setReminderRows((prev) => [...prev.filter((x) => x.reminder_key !== reminder.key), row]);
+    } else {
+      const row = reminderRows.find((x) => x.reminder_key === reminder.key);
+      if (row) {
+        await disableHealthReminder(row);
+        setReminderRows((prev) => prev.filter((x) => x.reminder_key !== reminder.key));
+      }
+    }
+    setReminderBusy(null);
+  };
 
   if (loading) {
     return (
@@ -94,6 +138,28 @@ export function RecommendationDetailScreen({ navigation, route }: Props) {
           </View>
         </FadeInUp>
 
+        {plan.warningSigns ? (
+          <FadeInUp index={1}>
+            <View style={styles.warningCard}>
+              <View style={styles.warningHeaderRow}>
+                <Ionicons name="warning" size={20} color={colors.danger} />
+                <Text style={styles.warningTitle}>Warning signs to watch for</Text>
+              </View>
+              <Text style={styles.warningIntro}>{plan.warningSigns.intro}</Text>
+              {plan.warningSigns.signs.map((sign) => (
+                <View key={sign} style={styles.warningSignRow}>
+                  <Ionicons name="alert-circle" size={15} color={colors.danger} />
+                  <Text style={styles.warningSignText}>{sign}</Text>
+                </View>
+              ))}
+              <View style={styles.warningUrgentRow}>
+                <Ionicons name="medkit" size={15} color={colors.white} />
+                <Text style={styles.warningUrgentText}>{plan.warningSigns.urgentNote}</Text>
+              </View>
+            </View>
+          </FadeInUp>
+        ) : null}
+
         <FadeInUp index={1}>
           <Text style={styles.sectionTitle}>How to improve</Text>
           <View style={styles.card}>
@@ -106,7 +172,51 @@ export function RecommendationDetailScreen({ navigation, route }: Props) {
           </View>
         </FadeInUp>
 
-        <FadeInUp index={2}>
+        {plan.reminders && plan.reminders.length > 0 ? (
+          <FadeInUp index={2}>
+            <Text style={styles.sectionTitle}>Daily reminders</Text>
+            <Text style={styles.reminderHint}>
+              Switch these on and your phone will nudge you every day, even when the app is closed.
+            </Text>
+            <View style={styles.card}>
+              {plan.reminders.map((reminder, index) => {
+                const on = enabledKeys.has(reminder.key);
+                return (
+                  <View
+                    key={reminder.key}
+                    style={[styles.reminderRow, index > 0 && styles.reminderRowSpacing]}
+                  >
+                    <View style={styles.reminderIcon}>
+                      <MaterialCommunityIcons
+                        name={reminder.icon as MCIName}
+                        size={20}
+                        color={colors.darkAccentGreen}
+                      />
+                    </View>
+                    <View style={styles.reminderTextColumn}>
+                      <Text style={styles.reminderLabel}>{reminder.label}</Text>
+                      <Text style={styles.reminderMessage}>{reminder.message}</Text>
+                      <Text style={styles.reminderTime}>
+                        {on
+                          ? `On, at ${formatTimes(reminder.times)}`
+                          : `Suggested for ${formatTimes(reminder.times)}`}
+                      </Text>
+                    </View>
+                    <Switch
+                      value={on}
+                      onValueChange={(v) => onToggleReminder(reminder, v)}
+                      disabled={reminderBusy === reminder.key}
+                      trackColor={{ true: colors.primaryGreen, false: colors.border }}
+                      thumbColor={colors.white}
+                    />
+                  </View>
+                );
+              })}
+            </View>
+          </FadeInUp>
+        ) : null}
+
+        <FadeInUp index={3}>
           <Text style={styles.sectionTitle}>This week's plan</Text>
           <View style={styles.card}>
             {plan.weeklyPlan.map((item, index) => (
@@ -124,7 +234,7 @@ export function RecommendationDetailScreen({ navigation, route }: Props) {
           </View>
         </FadeInUp>
 
-        <FadeInUp index={3}>
+        <FadeInUp index={4}>
           <Text style={styles.sectionTitle}>Food to enjoy</Text>
           <View style={styles.card}>
             {plan.food.enjoy.map((line, index) => (
@@ -136,7 +246,7 @@ export function RecommendationDetailScreen({ navigation, route }: Props) {
           </View>
         </FadeInUp>
 
-        <FadeInUp index={4}>
+        <FadeInUp index={5}>
           <Text style={styles.sectionTitle}>Food to limit</Text>
           <View style={styles.card}>
             {plan.food.limit.map((line, index) => (
@@ -276,6 +386,109 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     color: colors.textPrimary,
     marginTop: -1,
+  },
+  reminderHint: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: colors.textSecondary,
+    marginTop: -4,
+    marginBottom: 10,
+  },
+  warningCard: {
+    backgroundColor: '#FEF2F0',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#F6D2CC',
+    padding: 16,
+    marginTop: 16,
+  },
+  warningHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  warningTitle: {
+    fontFamily: fonts.headingSemiBold,
+    fontSize: 15,
+    color: colors.danger,
+  },
+  warningIntro: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.textPrimary,
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  warningSignRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 7,
+  },
+  warningSignText: {
+    flex: 1,
+    fontFamily: fonts.bodyRegular,
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.textPrimary,
+  },
+  warningUrgentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: colors.danger,
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 14,
+  },
+  warningUrgentText: {
+    flex: 1,
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: colors.white,
+  },
+  reminderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  reminderRowSpacing: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  reminderIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.pillGreenBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reminderTextColumn: {
+    flex: 1,
+  },
+  reminderLabel: {
+    fontFamily: fonts.headingMedium,
+    fontSize: 14,
+    color: colors.textPrimary,
+  },
+  reminderMessage: {
+    fontFamily: fonts.bodyRegular,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  reminderTime: {
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 11.5,
+    color: colors.darkAccentGreen,
+    marginTop: 4,
   },
   planRow: {
     flexDirection: 'row',

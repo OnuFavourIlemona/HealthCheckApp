@@ -6,7 +6,7 @@ export type ProStats = {
   completedConsultations: number;
   averageRating: number | null;
   ratingCount: number;
-  /** Naira earned, derived from completed consultations at the standard fee. */
+  /** Naira earned, summed across every completed consultation -- each one priced by its own rating. */
   earnings: number;
   /** Consultations accepted per day over the last 14 days, oldest first. */
   dailyCounts: number[];
@@ -44,8 +44,61 @@ function dailyBuckets(timestamps: string[]): number[] {
   return counts;
 }
 
-/** Standard payout per completed consultation, in naira. */
-export const CONSULTATION_FEE = 5000;
+/**
+ * Practitioner payout model. Each completed consultation earns a share of the
+ * patient consult fee, adjusted for the quality of care (its rating) and how
+ * quickly it was accepted, then lifted by the practitioner's loyalty tier. Every
+ * lever is a constant here so it can be tuned in one place without touching the
+ * maths. See docs/PRACTITIONER_PAYOUT.md for the full write-up.
+ */
+export const PAYOUT_CONFIG = {
+  /** What a patient is charged for a standard consult — this funds the payout. */
+  baseConsultFee: 2000,
+  /** The platform's cut, which keeps the service running. */
+  platformCommission: 0.25,
+  /** Paid on top when the consult is accepted quickly. */
+  responsivenessBonus: 200,
+  /** "Quick" means accepted within this many seconds (10 minutes). */
+  fastAcceptSeconds: 600,
+  /** A consult's star rating (1..5) maps linearly onto this multiplier band. */
+  qualityMin: 0.9,
+  qualityMax: 1.1,
+  /** Loyalty uplift by tier, applied to every consult once the tier is reached. */
+  tierUplift: { Starter: 0, Bronze: 0.05, Silver: 0.1, Gold: 0.15 } as Record<string, number>,
+};
+
+/** Quality multiplier from a consult's star rating (1★ → 0.9, 5★ → 1.1, unrated → 1.0). */
+export function qualityMultiplier(rating: number | null): number {
+  if (rating == null) return 1;
+  const clamped = Math.max(1, Math.min(5, rating));
+  return (
+    PAYOUT_CONFIG.qualityMin +
+    ((clamped - 1) / 4) * (PAYOUT_CONFIG.qualityMax - PAYOUT_CONFIG.qualityMin)
+  );
+}
+
+/** Seconds between a consult being created and accepted, or null if unknown. */
+export function acceptSeconds(createdAt: string | null, acceptedAt: string | null): number | null {
+  if (!createdAt || !acceptedAt) return null;
+  return (new Date(acceptedAt).getTime() - new Date(createdAt).getTime()) / 1000;
+}
+
+/**
+ * Naira a single completed consultation pays: the fee after commission, scaled
+ * by quality, plus a responsiveness bonus, then lifted by the loyalty tier.
+ */
+export function computeConsultPayout(
+  rating: number | null,
+  acceptedInSeconds: number | null,
+  tierName = 'Starter',
+): number {
+  const afterCommission = PAYOUT_CONFIG.baseConsultFee * (1 - PAYOUT_CONFIG.platformCommission);
+  const quality = qualityMultiplier(rating);
+  const fast = acceptedInSeconds != null && acceptedInSeconds <= PAYOUT_CONFIG.fastAcceptSeconds;
+  const beforeTier = afterCommission * quality + (fast ? PAYOUT_CONFIG.responsivenessBonus : 0);
+  const uplift = PAYOUT_CONFIG.tierUplift[tierName] ?? 0;
+  return Math.round(beforeTier * (1 + uplift));
+}
 
 export async function fetchProStats(): Promise<ProStats> {
   const { data: sessionData } = await supabase.auth.getSession();
@@ -55,11 +108,11 @@ export async function fetchProStats(): Promise<ProStats> {
   const [{ data: consultations }, { data: ratings }] = await Promise.all([
     supabase
       .from('consultations')
-      .select('patient_id, status, accepted_at, created_at')
+      .select('id, patient_id, status, accepted_at, created_at')
       .eq('professional_id', userId),
     supabase
       .from('consultation_ratings')
-      .select('rating, created_at')
+      .select('consultation_id, rating, created_at')
       .eq('professional_id', userId)
       .order('created_at', { ascending: true }),
   ]);
@@ -67,21 +120,34 @@ export async function fetchProStats(): Promise<ProStats> {
   const rows = consultations ?? [];
   const uniquePatients = new Set(rows.map((r) => r.patient_id));
   const active = rows.filter((r) => r.status === 'active').length;
-  const completed = rows.filter((r) => r.status === 'completed').length;
+  const completedRows = rows.filter((r) => r.status === 'completed');
 
   const ratingRows = ratings ?? [];
+  const ratingByConsultation = new Map<string, number>(
+    ratingRows.map((r) => [r.consultation_id as string, r.rating as number]),
+  );
   const averageRating =
     ratingRows.length > 0
       ? ratingRows.reduce((sum, r) => sum + (r.rating as number), 0) / ratingRows.length
       : null;
 
+  const tierName = tierFor(completedRows.length).name;
+  const earnings = completedRows.reduce((sum, c) => {
+    const rating = ratingByConsultation.get(c.id as string) ?? null;
+    const secs = acceptSeconds(
+      (c.created_at as string) ?? null,
+      (c.accepted_at as string | null) ?? null,
+    );
+    return sum + computeConsultPayout(rating, secs, tierName);
+  }, 0);
+
   return {
     patientsAttended: uniquePatients.size,
     activeConsultations: active,
-    completedConsultations: completed,
+    completedConsultations: completedRows.length,
     averageRating,
     ratingCount: ratingRows.length,
-    earnings: completed * CONSULTATION_FEE,
+    earnings,
     dailyCounts: dailyBuckets(
       rows.map((r) => (r.accepted_at as string | null) ?? (r.created_at as string)),
     ),

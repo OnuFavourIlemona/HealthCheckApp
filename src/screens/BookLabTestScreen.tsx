@@ -152,6 +152,7 @@ export function BookLabTestScreen({ navigation }: Props) {
   const [liveLabs, setLiveLabs] = useState<LabPlace[]>([]);
   const [dbLabs, setDbLabs] = useState<LabPlace[]>([]);
   const [lookupFailed, setLookupFailed] = useState(false);
+  const [mapInteracting, setMapInteracting] = useState(false);
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedTestKey, setSelectedTestKey] = useState<string | null>(null);
@@ -258,6 +259,15 @@ export function BookLabTestScreen({ navigation }: Props) {
     Linking.openURL(`tel:${phone.replace(/\s+/g, '')}`);
   };
 
+  // OpenStreetMap is less complete in Nigeria than Google, so let users
+  // cross-check the same lab search on Google Maps.
+  const openGoogleMapsSearch = () => {
+    const near = userCoords ? `${userCoords.latitude},${userCoords.longitude}` : 'me';
+    Linking.openURL(
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`medical laboratory near ${near}`)}`,
+    );
+  };
+
   const toggleBooking = (place: LabPlace) => {
     setBookingError(null);
     if (expandedId === place.id) {
@@ -306,17 +316,28 @@ export function BookLabTestScreen({ navigation }: Props) {
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </Pressable>
         <Text style={styles.headerTitle}>Find a Lab</Text>
-        <View style={{ width: 24 }} />
+        <Pressable onPress={() => navigation.navigate('MyLabBookings')} hitSlop={12}>
+          <Ionicons name="receipt-outline" size={22} color={colors.darkAccentGreen} />
+        </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={!mapInteracting}
+      >
         <Text style={styles.sectionHint}>
           Search nearby diagnostic labs and pharmacies that offer lab tests. Call ahead to confirm,
           or get directions and visit in person. A few pharmacies also let you book a test right
           here in the app.
         </Text>
 
-        <View style={styles.mapCard}>
+        <View
+          style={styles.mapCard}
+          onTouchStart={() => setMapInteracting(true)}
+          onTouchEnd={() => setMapInteracting(false)}
+          onTouchCancel={() => setMapInteracting(false)}
+        >
           <NearbyMap
             userCoords={userCoords}
             places={places.map((p) => ({ ...p, category: 'labs' as const }))}
@@ -334,6 +355,12 @@ export function BookLabTestScreen({ navigation }: Props) {
             </View>
           ) : null}
         </View>
+
+        <Pressable style={styles.googleMapsButton} onPress={openGoogleMapsSearch}>
+          <MaterialCommunityIcons name="google-maps" size={17} color={colors.darkAccentGreen} />
+          <Text style={styles.googleMapsButtonText}>Not seeing a lab? Search on Google Maps</Text>
+          <Ionicons name="open-outline" size={15} color={colors.textMuted} />
+        </Pressable>
 
         {searching ? (
           <View style={styles.searchingRow}>
@@ -527,6 +554,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#EEF2F0',
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  googleMapsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 12,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+  },
+  googleMapsButtonText: {
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 13,
+    color: colors.darkAccentGreen,
   },
   countChip: {
     position: 'absolute',

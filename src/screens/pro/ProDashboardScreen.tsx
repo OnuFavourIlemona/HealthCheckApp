@@ -3,7 +3,7 @@ import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useNavigation, type CompositeNavigationProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import {
@@ -12,6 +12,7 @@ import {
   subscribeToPendingRequests,
   type Consultation,
 } from '../../lib/consultations';
+import { hasProvidedNin } from '../../lib/nin';
 import { fetchUnreadCount, subscribeToNotifications } from '../../lib/notifications';
 import {
   EMPTY_PRO_STATS,
@@ -28,7 +29,9 @@ import {
   ProDashboardHeader,
   StatTile,
 } from '../../components/proDashboard';
+import { FadeInUp } from '../../components/ui/FadeInUp';
 import { PatternBackground } from '../../components/ui/PatternBackground';
+import { Tappable } from '../../components/ui/Tappable';
 import { colors, fonts } from '../../theme';
 
 type ProDashboardNavigation = CompositeNavigationProp<
@@ -36,8 +39,19 @@ type ProDashboardNavigation = CompositeNavigationProp<
   NativeStackNavigationProp<RootStackParamList>
 >;
 
+// The stats grid content area is the screen width minus the ScrollView's
+// horizontal padding (24 each side) and the gap between the two columns.
+const CONTENT_PADDING = 24;
+const GRID_GAP = 12;
+
 export function ProDashboardScreen() {
   const navigation = useNavigation<ProDashboardNavigation>();
+  // Tappable only forwards `style` to its inner Animated.View, whose own
+  // parent (Pressable) has no explicit size -- so a percentage width can't
+  // resolve there and silently collapses to shrink-to-content instead. A
+  // computed pixel width sidesteps that entirely.
+  const { width: windowWidth } = useWindowDimensions();
+  const statTileWidth = (windowWidth - CONTENT_PADDING * 2 - GRID_GAP) / 2;
   const [requests, setRequests] = useState<Consultation[]>([]);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [acceptError, setAcceptError] = useState<string | null>(null);
@@ -46,6 +60,7 @@ export function ProDashboardScreen() {
   const [displayName, setDisplayName] = useState('Practitioner');
   const [specialty, setSpecialty] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [stats, setStats] = useState<ProStats>(EMPTY_PRO_STATS);
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -64,13 +79,14 @@ export function ProDashboardScreen() {
     }
     const { data } = await supabase
       .from('profiles')
-      .select('full_name, specialty, is_verified, license_submitted_at')
+      .select('full_name, specialty, is_verified, license_submitted_at, avatar_url')
       .eq('id', userId)
       .maybeSingle();
     setIsVerified(data?.is_verified ?? false);
     setSubmittedForReview(!!data?.license_submitted_at);
     if (data?.full_name) setDisplayName(data.full_name);
     setSpecialty(data?.specialty ?? null);
+    setAvatarUrl(data?.avatar_url ?? null);
   }, []);
 
   const loadStats = useCallback(async () => {
@@ -97,6 +113,14 @@ export function ProDashboardScreen() {
   const handleAccept = async (id: string) => {
     if (acceptingId) return;
     setAcceptError(null);
+
+    // A practitioner must have their own NIN on file before taking a patient,
+    // so both sides are accountable if a consultation is ever disputed.
+    if (!(await hasProvidedNin())) {
+      navigation.navigate('VerifyNin');
+      return;
+    }
+
     setAcceptingId(id);
     const { consultation, error } = await acceptConsultation(id);
     setAcceptingId(null);
@@ -121,6 +145,7 @@ export function ProDashboardScreen() {
         <ProDashboardHeader
           name={displayName}
           email={email}
+          avatarUrl={avatarUrl}
           role={specialty ?? (isVerified ? 'Verified practitioner' : 'Medical practitioner')}
           verified={!!isVerified}
           notificationCount={unreadCount}
@@ -128,38 +153,45 @@ export function ProDashboardScreen() {
           onPressAvatar={() => navigation.navigate('Profile')}
         />
 
-        <View style={styles.sectionSpacing}>
-          <EarningsCard
-            amount={formatNaira(stats.earnings)}
-            growthLabel={`${stats.completedConsultations} completed consultation${
-              stats.completedConsultations === 1 ? '' : 's'
-            }`}
-            tier={tierFor(stats.completedConsultations).name}
-          />
+        <FadeInUp index={0} style={styles.sectionSpacing}>
+          <Tappable onPress={() => navigation.navigate('Payments')}>
+            <EarningsCard
+              amount={formatNaira(stats.earnings)}
+              growthLabel={`${stats.completedConsultations} completed consultation${
+                stats.completedConsultations === 1 ? '' : 's'
+              }`}
+              tier={tierFor(stats.completedConsultations).name}
+            />
+          </Tappable>
+        </FadeInUp>
+
+        <View style={styles.statsGrid}>
+          <Tappable style={{ width: statTileWidth }} onPress={() => navigation.navigate('Patients')}>
+            <StatTile label="Patients Attended" value={String(stats.patientsAttended)} tinted fill />
+          </Tappable>
+          <Tappable style={{ width: statTileWidth }} onPress={() => navigation.navigate('Payments')}>
+            <StatTile
+              label="Avg. Rating"
+              value={stats.averageRating != null ? stats.averageRating.toFixed(1) : '—'}
+              valueEmoji={stats.averageRating != null ? '⭐' : undefined}
+              trendLabel={
+                stats.ratingCount > 0
+                  ? `${stats.ratingCount} rating${stats.ratingCount === 1 ? '' : 's'}`
+                  : 'No ratings yet'
+              }
+              tinted
+              fill
+            />
+          </Tappable>
+          <Tappable style={{ width: statTileWidth }} onPress={() => navigation.navigate('Schedule')}>
+            <StatTile label="Active Chats" value={String(stats.activeConsultations)} tinted fill />
+          </Tappable>
+          <Tappable style={{ width: statTileWidth }} onPress={() => navigation.navigate('Patients')}>
+            <StatTile label="Completed" value={String(stats.completedConsultations)} tinted fill />
+          </Tappable>
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.statsScroll}
-          contentContainerStyle={styles.statsRow}
-        >
-          <StatTile label="Patients Attended" value={String(stats.patientsAttended)} />
-          <StatTile
-            label="Avg. Rating"
-            value={stats.averageRating != null ? stats.averageRating.toFixed(1) : '—'}
-            valueEmoji={stats.averageRating != null ? '⭐' : undefined}
-            trendLabel={
-              stats.ratingCount > 0
-                ? `${stats.ratingCount} rating${stats.ratingCount === 1 ? '' : 's'}`
-                : 'No ratings yet'
-            }
-          />
-          <StatTile label="Active Chats" value={String(stats.activeConsultations)} />
-          <StatTile label="Completed" value={String(stats.completedConsultations)} />
-        </ScrollView>
-
-        <View style={styles.sectionSpacing}>
+        <FadeInUp index={1} style={styles.sectionSpacing}>
           {isVerified === false ? (
             <Pressable
               style={styles.verifyCard}
@@ -188,16 +220,16 @@ export function ProDashboardScreen() {
               onAccept={handleAccept}
             />
           )}
-        </View>
+        </FadeInUp>
 
-        <View style={styles.sectionSpacing}>
+        <FadeInUp index={2} style={styles.sectionSpacing}>
           <PerformanceOverview
             dailyCounts={stats.dailyCounts}
             ratingTrend={stats.ratingTrend}
             totalConsultations={stats.patientsAttended > 0 ? stats.completedConsultations + stats.activeConsultations : 0}
             averageRating={stats.averageRating}
           />
-        </View>
+        </FadeInUp>
       </ScrollView>
     </SafeAreaView>
   );
@@ -250,12 +282,11 @@ const styles = StyleSheet.create({
     color: '#9A6A10',
     marginTop: 3,
   },
-  statsScroll: {
-    marginTop: 20,
-    marginHorizontal: -24,
-  },
-  statsRow: {
-    paddingHorizontal: 24,
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
     gap: 12,
+    marginTop: 20,
   },
 });

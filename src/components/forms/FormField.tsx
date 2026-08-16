@@ -6,9 +6,11 @@ import { colors, fonts } from '../../theme';
 type Props = {
   label: string;
   helperText?: string;
+  /** When set, the field shows a red border and this message underneath. */
+  error?: string | null;
 } & TextInputProps;
 
-export function FormField({ label, helperText, style, secureTextEntry, ...inputProps }: Props) {
+export function FormField({ label, helperText, error, style, secureTextEntry, ...inputProps }: Props) {
   const [revealed, setRevealed] = useState(false);
   const isPasswordField = secureTextEntry !== undefined;
 
@@ -17,7 +19,7 @@ export function FormField({ label, helperText, style, secureTextEntry, ...inputP
       <Text style={styles.label}>{label}</Text>
       <View style={styles.inputRow}>
         <TextInput
-          style={[styles.input, isPasswordField && styles.inputWithIcon, style]}
+          style={[styles.input, isPasswordField && styles.inputWithIcon, error ? styles.inputError : null, style]}
           placeholderTextColor={colors.inputPlaceholder}
           secureTextEntry={isPasswordField ? secureTextEntry && !revealed : secureTextEntry}
           {...inputProps}
@@ -36,7 +38,12 @@ export function FormField({ label, helperText, style, secureTextEntry, ...inputP
           </Pressable>
         ) : null}
       </View>
-      {helperText ? (
+      {error ? (
+        <View style={styles.errorRow}>
+          <Ionicons name="alert-circle" size={15} color={colors.danger} />
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : helperText ? (
         <View style={styles.helperRow}>
           <Ionicons name="information-circle-outline" size={16} color={colors.helperOrange} />
           <Text style={styles.helperText}>{helperText}</Text>
@@ -74,6 +81,23 @@ const styles = StyleSheet.create({
   },
   inputWithIcon: {
     paddingRight: 44,
+  },
+  inputError: {
+    borderWidth: 1,
+    borderColor: colors.danger,
+  },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 8,
+    gap: 6,
+  },
+  errorText: {
+    flex: 1,
+    fontFamily: fonts.bodyRegular,
+    fontSize: 12.5,
+    color: colors.danger,
+    lineHeight: 17,
   },
   eyeButton: {
     position: 'absolute',

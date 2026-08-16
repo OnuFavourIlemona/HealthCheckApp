@@ -1,4 +1,5 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { NotificationGate } from '../components/NotificationGate';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { ProDashboardScreen } from '../screens/pro/ProDashboardScreen';
 import { ProPatientsScreen } from '../screens/pro/ProPatientsScreen';
@@ -19,15 +20,18 @@ const tabIcons: TabIconMap = {
 
 export function ProTabs() {
   return (
-    <Tab.Navigator
-      screenOptions={{ headerShown: false }}
-      tabBar={(props) => <AnimatedTabBar {...props} tabIcons={tabIcons} />}
-    >
-      <Tab.Screen name="Dashboard" component={ProDashboardScreen} />
-      <Tab.Screen name="Patients" component={ProPatientsScreen} />
-      <Tab.Screen name="Schedule" component={ProScheduleScreen} />
-      <Tab.Screen name="Payments" component={ProPaymentsScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
-    </Tab.Navigator>
+    <>
+      <Tab.Navigator
+        screenOptions={{ headerShown: false }}
+        tabBar={(props) => <AnimatedTabBar {...props} tabIcons={tabIcons} />}
+      >
+        <Tab.Screen name="Dashboard" component={ProDashboardScreen} />
+        <Tab.Screen name="Patients" component={ProPatientsScreen} />
+        <Tab.Screen name="Schedule" component={ProScheduleScreen} />
+        <Tab.Screen name="Payments" component={ProPaymentsScreen} />
+        <Tab.Screen name="Profile" component={ProfileScreen} />
+      </Tab.Navigator>
+      <NotificationGate />
+    </>
   );
 }

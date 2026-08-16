@@ -4,6 +4,7 @@ export type RootStackParamList = {
   Splash: undefined;
   Onboarding: undefined;
   Login: undefined;
+  ForgotPassword: undefined;
   SelectRole: undefined;
   SignupMedicalPractitioner: undefined;
   SignupPharmacy: undefined;
@@ -11,7 +12,7 @@ export type RootStackParamList = {
   CheckEmail: { email: string };
   MainTabs: NavigatorScreenParams<MainTabsParamList> | undefined;
   ProTabs: undefined;
-  PharmacyTabs: undefined;
+  PharmacyTabs: NavigatorScreenParams<PharmacyTabsParamList> | undefined;
   ProConnect: { consultationId?: string } | undefined;
   RequestConsultation: undefined;
   ProCredentials: undefined;
@@ -24,6 +25,15 @@ export type RootStackParamList = {
   EditProfile: undefined;
   ChangePassword: undefined;
   RecommendationDetail: { key: string };
+  VerifyNin: undefined;
+  PharmacyMedicines: undefined;
+  FindMedicine: undefined;
+  PeriodTracker: undefined;
+  Reminders: undefined;
+  DeleteAccount: undefined;
+  DrugReminders: undefined;
+  MyLabBookings: { bookingId?: string } | undefined;
+  MyMedicineHolds: { reservationId?: string } | undefined;
 };
 
 export type MainTabsParamList = {
@@ -39,5 +49,12 @@ export type ProTabsParamList = {
   Patients: undefined;
   Schedule: undefined;
   Payments: undefined;
+  Profile: undefined;
+};
+
+export type PharmacyTabsParamList = {
+  Dashboard: undefined;
+  Bookings: { bookingId?: string; reservationId?: string; section?: 'labs' | 'holds' } | undefined;
+  'My Store': undefined;
   Profile: undefined;
 };

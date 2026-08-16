@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 export type MapPlace = {
@@ -61,15 +61,25 @@ const HTML = `<!DOCTYPE html>
 <script>
   // Neutral starting view — recentred on the user's real position as soon as
   // renderPlaces() runs, so no city is implied before GPS resolves.
-  var map = L.map('map', { zoomControl: false, attributionControl: true })
-    .setView([0, 20], 2);
+  var map = L.map('map', {
+    zoomControl: false,
+    attributionControl: true,
+    tapTolerance: 18,
+    bounceAtZoomLimits: true,
+    zoomSnap: 0.5
+  }).setView([0, 20], 2);
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; OpenStreetMap &copy; CARTO',
     maxZoom: 19
   }).addTo(map);
 
-  L.control.zoom({ position: 'bottomright' }).addTo(map);
+  // Zoom driven from the native buttons for reliability inside a scroll view.
+  window.zoomMap = function (dir) {
+    if (dir === 'in') map.zoomIn(1);
+    else map.zoomOut(1);
+    return true;
+  };
 
   var markerLayer = L.layerGroup().addTo(map);
 
@@ -132,6 +142,10 @@ export function NearbyMap({ userCoords, places }: Props) {
     if (ready) pushPlaces();
   }, [ready, pushPlaces]);
 
+  const zoom = (dir: 'in' | 'out') => {
+    webRef.current?.injectJavaScript(`window.zoomMap && window.zoomMap('${dir}'); true;`);
+  };
+
   return (
     <View style={styles.container}>
       <WebView
@@ -148,6 +162,20 @@ export function NearbyMap({ userCoords, places }: Props) {
         }}
         onLoadEnd={() => setReady(true)}
       />
+
+      {/* Reliable tap-to-zoom, independent of the pinch gesture. */}
+      <View style={styles.zoomControls}>
+        <Pressable
+          style={[styles.zoomButton, styles.zoomButtonTop]}
+          onPress={() => zoom('in')}
+          hitSlop={6}
+        >
+          <Text style={styles.zoomLabel}>+</Text>
+        </Pressable>
+        <Pressable style={styles.zoomButton} onPress={() => zoom('out')} hitSlop={6}>
+          <Text style={styles.zoomLabel}>−</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -161,4 +189,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'transparent',
   },
+  zoomControls: {
+    position: 'absolute',
+    right: 12,
+    top: 12,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  zoomButton: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomButtonTop: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#E6E6E6',
+  },
+  zoomLabel: {
+    fontSize: 24,
+    lineHeight: 26,
+    color: '#111111',
+    fontWeight: '600',
+  },
 });
+

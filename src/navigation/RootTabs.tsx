@@ -1,4 +1,5 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { NotificationGate } from '../components/NotificationGate';
 import { AssessScreen } from '../screens/AssessScreen';
 import { FindCareScreen } from '../screens/FindCareScreen';
 import { HomeScreen } from '../screens/HomeScreen';
@@ -18,15 +19,18 @@ const tabIcons: TabIconMap = {
 
 export function RootTabs() {
   return (
-    <Tab.Navigator
-      screenOptions={{ headerShown: false }}
-      tabBar={(props) => <AnimatedTabBar {...props} tabIcons={tabIcons} />}
-    >
-      <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Assess" component={AssessScreen} />
-      <Tab.Screen name="Messages" component={MessagesScreen} />
-      <Tab.Screen name="Find Care" component={FindCareScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
-    </Tab.Navigator>
+    <>
+      <Tab.Navigator
+        screenOptions={{ headerShown: false }}
+        tabBar={(props) => <AnimatedTabBar {...props} tabIcons={tabIcons} />}
+      >
+        <Tab.Screen name="Home" component={HomeScreen} />
+        <Tab.Screen name="Assess" component={AssessScreen} />
+        <Tab.Screen name="Messages" component={MessagesScreen} />
+        <Tab.Screen name="Find Care" component={FindCareScreen} />
+        <Tab.Screen name="Profile" component={ProfileScreen} />
+      </Tab.Navigator>
+      <NotificationGate />
+    </>
   );
 }

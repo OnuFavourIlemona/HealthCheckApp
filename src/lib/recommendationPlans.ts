@@ -1,4 +1,5 @@
 import type { HealthProfile } from './dashboard';
+import type { PlanReminder } from './healthReminders';
 
 export type WeeklyPlanItem = {
   day: string;
@@ -11,6 +12,13 @@ export type FoodGuidance = {
   limit: string[];
 };
 
+export type WarningSigns = {
+  intro: string;
+  signs: string[];
+  /** The red-alert line for signs that need a hospital straight away. */
+  urgentNote: string;
+};
+
 export type RecommendationPlan = {
   heroTitle: string;
   heroSubtitle: string;
@@ -18,7 +26,23 @@ export type RecommendationPlan = {
   weeklyPlan: WeeklyPlanItem[];
   weeklyPlanNote: string;
   food: FoodGuidance;
+  /** Daily habits the user can switch on as phone reminders. */
+  reminders?: PlanReminder[];
+  /** Signs that should send the person to a doctor, shown in a highlighted card. */
+  warningSigns?: WarningSigns;
 };
+
+// A reusable, everyday activity week for the condition plans, so we don't
+// repeat the same seven lines in each one.
+const ACTIVITY_WEEK: WeeklyPlanItem[] = [
+  { day: 'Mon', activity: 'Brisk walk', detail: '30 min at a pace where talking is a little harder' },
+  { day: 'Tue', activity: 'Light strength work', detail: '15-20 min: squats, wall push-ups, step-ups on a stair' },
+  { day: 'Wed', activity: 'Brisk walk', detail: '30 min at a steady, purposeful pace' },
+  { day: 'Thu', activity: 'Light strength work', detail: '15-20 min: squats, wall push-ups, step-ups on a stair' },
+  { day: 'Fri', activity: 'Brisk walk', detail: '30 min at a steady, purposeful pace' },
+  { day: 'Sat', activity: 'Something you enjoy', detail: '30+ min: football, dancing, a keep-fit session, a long trek' },
+  { day: 'Sun', activity: 'Rest or a gentle walk', detail: 'Let your body recover' },
+];
 
 function sleepPlan(profile: HealthProfile | null): RecommendationPlan {
   const hours = profile?.sleep_hours ?? null;
@@ -62,6 +86,15 @@ function sleepPlan(profile: HealthProfile | null): RecommendationPlan {
         "Alcohol close to bedtime. It disrupts deep sleep even if it makes you drowsy at first",
       ],
     },
+    reminders: [
+      {
+        key: 'winddown',
+        label: 'Time to wind down',
+        message: 'Time to wind down. Put the phone away and get ready for a good sleep tonight.',
+        times: [{ hour: 21, minute: 30 }],
+        icon: 'sleep',
+      },
+    ],
   };
 }
 
@@ -177,6 +210,287 @@ function bloodPressurePlan(): RecommendationPlan {
         'Salted, dried, or smoked fish and meat',
       ],
     },
+    reminders: [
+      {
+        key: 'salt',
+        label: 'Go easy on salt',
+        message: 'Go easy on salt and Maggi today. Less salt keeps your blood pressure down.',
+        times: [{ hour: 11, minute: 30 }],
+        icon: 'shaker-outline',
+      },
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Per-condition plans (one for each prediction), in plain, everyday language.
+// ---------------------------------------------------------------------------
+
+function diabetesPlan(): RecommendationPlan {
+  return {
+    heroTitle: 'Protect yourself from diabetes',
+    heroSubtitle: 'Small daily habits keep your blood sugar steady and lower your risk.',
+    howToImprove: [
+      'Cut down on sugary drinks. Soft drinks, sweetened juice, and heavy sugar in tea and pap are the fastest way to spike your sugar.',
+      'Move most days. Even a 30-minute walk helps your body use sugar better.',
+      'Fill half your plate with vegetables before you add rice, garri, or swallow.',
+      'If you feel very thirsty, tired, or you are passing urine often, get your blood sugar checked. Do not wait.',
+      'If diabetes runs in your family, get a fasting blood sugar or HbA1c test at least once a year.',
+    ],
+    weeklyPlan: ACTIVITY_WEEK,
+    weeklyPlanNote:
+      'About 150 minutes of activity a week is enough to meaningfully lower diabetes risk. Spread it across the week.',
+    food: {
+      enjoy: [
+        'Vegetables like ugu, efo, okra, and garden egg',
+        'Beans, fish, eggs, and other protein that fills you up',
+        'Fruit in place of sweets, and water in place of soft drinks',
+      ],
+      limit: [
+        'Soft drinks, energy drinks, and sweetened juice',
+        'Big portions of white rice, garri, and swallow. Keep them to about a quarter of the plate',
+        'Fried snacks and sugary treats between meals',
+      ],
+    },
+    reminders: [
+      {
+        key: 'move',
+        label: 'Time to move',
+        message: 'Did you take a walk today? A short walk helps your body keep blood sugar steady.',
+        times: [{ hour: 16, minute: 0 }],
+        icon: 'run',
+      },
+      {
+        key: 'veg',
+        label: 'Eat well today',
+        message: 'Fill half your plate with vegetables on your next meal. It steadies your blood sugar.',
+        times: [{ hour: 18, minute: 30 }],
+        icon: 'food-apple-outline',
+      },
+    ],
+  };
+}
+
+function hypertensionPlan(): RecommendationPlan {
+  return {
+    heroTitle: 'Keep your blood pressure down',
+    heroSubtitle: 'High blood pressure is quiet, so daily care and checking matter most.',
+    howToImprove: [
+      'Use less salt and fewer seasoning cubes. This is the single biggest thing you can change.',
+      'If a doctor gave you blood pressure medicine, take it every day, even when you feel fine.',
+      'Check your blood pressure when you can, and update it here. Many chemists and pharmacies check it cheaply.',
+      'Stay active most days and keep a healthy weight.',
+      'See a doctor if your reading is often above 140 over 90.',
+    ],
+    weeklyPlan: ACTIVITY_WEEK,
+    weeklyPlanNote:
+      'Regular activity can lower blood pressure by about as much as some medicines, so it truly counts.',
+    food: {
+      enjoy: [
+        'Foods rich in potassium: banana, spinach, ugu, beans, and unsalted groundnuts',
+        'Ginger, garlic, and fresh herbs for flavour instead of salt',
+        'Home-cooked meals where you decide how much salt goes in',
+      ],
+      limit: [
+        'Seasoning cubes, table salt, and salty snacks',
+        'Tinned and processed foods like corned beef and instant noodle seasoning',
+        'Dried and smoked fish and meat that carry a lot of salt',
+      ],
+    },
+    reminders: [
+      {
+        key: 'meds',
+        label: 'Blood pressure medicine',
+        message: 'Have you taken your blood pressure medicine today?',
+        times: [{ hour: 8, minute: 0 }],
+        icon: 'pill',
+      },
+      {
+        key: 'salt',
+        label: 'Go easy on salt',
+        message: 'Go easy on salt and Maggi today. Your blood pressure will thank you.',
+        times: [{ hour: 11, minute: 30 }],
+        icon: 'shaker-outline',
+      },
+    ],
+  };
+}
+
+function strokePlan(): RecommendationPlan {
+  return {
+    heroTitle: 'Lower your chance of a stroke',
+    heroSubtitle: 'A stroke is mostly preventable by keeping your heart and vessels healthy.',
+    howToImprove: [
+      'Control your blood pressure. High blood pressure is the number one cause of stroke.',
+      'If you smoke, work towards stopping. It is one of the biggest stroke risks and one you can remove.',
+      'Keep your blood sugar in check, especially if diabetes runs in your family.',
+      'Stay active and keep to a healthy weight.',
+      'Learn the warning signs: sudden weakness on one side, a drooping face, or trouble speaking. If you see them, get to a hospital fast.',
+    ],
+    weeklyPlan: ACTIVITY_WEEK,
+    weeklyPlanNote:
+      'Moving most days lowers blood pressure, sugar, and weight all at once, the three biggest stroke risks.',
+    food: {
+      enjoy: [
+        'Plenty of vegetables and fruit',
+        'Fish, beans, and other lean protein',
+        'Ginger and garlic for flavour instead of salt',
+      ],
+      limit: [
+        'Salt, seasoning cubes, and salty snacks',
+        'Fried and fatty foods eaten often',
+        'Heavy alcohol, which pushes blood pressure up',
+      ],
+    },
+    warningSigns: {
+      intro:
+        'A stroke is an emergency, and acting fast saves lives and prevents lasting damage. Remember the word FAST:',
+      signs: [
+        'Face: one side of the face droops or looks uneven',
+        'Arm: one arm or leg is suddenly weak or numb',
+        'Speech: speech is slurred, strange, or hard to understand',
+        'Sudden confusion, trouble seeing, or a very severe headache',
+      ],
+      urgentNote:
+        'If you notice any of these, even briefly, get to a hospital straight away. The first few hours matter most.',
+    },
+    reminders: [
+      {
+        key: 'move',
+        label: 'Move your body',
+        message: 'Have you exercised today? Staying active keeps your blood pressure and stroke risk down.',
+        times: [{ hour: 15, minute: 0 }],
+        icon: 'run',
+      },
+    ],
+  };
+}
+
+function kidneyPlan(): RecommendationPlan {
+  return {
+    heroTitle: 'Protect your kidneys',
+    heroSubtitle: 'Kidney damage is silent, so daily care and early testing matter most.',
+    howToImprove: [
+      'Drink enough clean water through the day, especially in hot weather. It helps your kidneys flush out waste.',
+      'Stop taking painkillers like ibuprofen, diclofenac, and APC unless you really need them. Taken often, they harm the kidneys.',
+      'Be careful with herbal mixtures like agbo and paraga. You cannot know what is inside, and some are hard on the kidneys.',
+      'Keep your blood pressure and blood sugar under control. These are the two biggest causes of kidney failure.',
+      'Because kidney damage shows no early signs, ask for a simple kidney test (blood and urine) at least once a year if you have any risk factors.',
+    ],
+    weeklyPlan: ACTIVITY_WEEK,
+    weeklyPlanNote:
+      'Staying active helps control blood pressure and sugar, which are the main things that protect your kidneys.',
+    food: {
+      enjoy: [
+        'Clean water through the day, about 6 to 8 cups',
+        'Fresh vegetables and fruit',
+        'Home-cooked meals with light salt',
+      ],
+      limit: [
+        'Salt, seasoning cubes, and very salty foods',
+        'Soft drinks and too many processed, packaged foods',
+        'Painkillers and herbal mixtures taken often',
+      ],
+    },
+    warningSigns: {
+      intro:
+        'Kidney damage is silent for a long time, so these signs mean you should see a doctor and ask for a kidney test. Do not wait for them to pass.',
+      signs: [
+        'Swelling in the feet, ankles, legs, or puffiness around the eyes, especially in the morning',
+        'Foamy or bubbly urine',
+        'Blood in the urine, or urine that looks dark or cola-coloured',
+        'Passing much less urine, or waking many times at night to urinate',
+        'Itchy skin, poor appetite, or feeling sick without a clear reason',
+        'Tiredness and weakness that does not go away with rest',
+      ],
+      urgentNote:
+        'Passing little or no urine, heavy swelling, or trouble breathing need urgent hospital care. Go straight away.',
+    },
+    reminders: [
+      {
+        key: 'water',
+        label: 'Drink water',
+        message: 'Have you drank water today? Water helps your kidneys flush out waste and stay healthy.',
+        times: [{ hour: 10, minute: 0 }],
+        icon: 'cup-water',
+      },
+      {
+        key: 'water2',
+        label: 'Drink water',
+        message: 'Try to drink 2 to 3 litres of water a day. Doctors recommend it to keep your kidneys healthy.',
+        times: [{ hour: 17, minute: 0 }],
+        icon: 'cup-water',
+      },
+      {
+        key: 'painkillers',
+        label: 'Skip needless painkillers',
+        message: 'Only take pain medicine if you really need it today. Cutting back protects your kidneys.',
+        times: [{ hour: 9, minute: 0 }],
+        icon: 'pill',
+      },
+    ],
+  };
+}
+
+function liverPlan(): RecommendationPlan {
+  return {
+    heroTitle: 'Protect your liver',
+    heroSubtitle: 'Liver damage is silent for years, so testing and daily care matter most.',
+    howToImprove: [
+      'Get tested for hepatitis B and C if you never have. Most people who carry it feel completely fine, and a simple blood test is the only way to know.',
+      'If you test negative for hepatitis B, get the vaccine. It fully prevents the infection.',
+      'Cut down on alcohol, or stop. It is the top cause of serious liver disease in Nigeria.',
+      'Be very careful with painkillers, especially paracetamol. Never take more than the dose on the pack, and never mix several medicines at once.',
+      'Be careful with herbal mixtures like agbo. Natural does not mean safe, and some are toxic to the liver.',
+      'Keep a healthy weight and cut sugary drinks and processed food to avoid fatty liver.',
+      'See a doctor quickly if your eyes or skin turn yellow, your urine is dark, or you feel very tired for a long time. These can be signs of liver trouble.',
+    ],
+    weeklyPlan: ACTIVITY_WEEK,
+    weeklyPlanNote:
+      'Regular activity and weight loss are the most effective way to clear fat from the liver, and 30 minutes most days is enough.',
+    food: {
+      enjoy: [
+        'Vegetables, fruit, and beans',
+        'Water and unsweetened drinks in place of soft drinks',
+        'Home-cooked meals with less oil and sugar',
+      ],
+      limit: [
+        'Alcohol of all kinds',
+        'Soft drinks, sweetened juice, and heavy sugar',
+        'Fried, fatty, and heavily processed foods',
+      ],
+    },
+    warningSigns: {
+      intro:
+        'Early liver damage is silent, so these signs mean you should see a doctor without delay. Do not treat them at home or wait for them to pass.',
+      signs: [
+        'Yellow eyes or yellow skin (jaundice)',
+        'Dark, tea-coloured urine',
+        'Pale or clay-coloured stools',
+        'A swollen, tight belly, or swelling in the legs and ankles',
+        'Easy bruising, bleeding gums, or frequent nosebleeds',
+        'Itchy skin without any rash',
+        'Deep tiredness that does not go away with rest',
+      ],
+      urgentNote:
+        'Vomiting blood, confusion, or drowsiness you cannot shake off are emergencies. Get to a hospital straight away.',
+    },
+    reminders: [
+      {
+        key: 'alcohol',
+        label: 'Go easy on alcohol',
+        message: 'Try to skip alcohol today. Every alcohol-free day gives your liver time to heal.',
+        times: [{ hour: 18, minute: 0 }],
+        icon: 'glass-mug-variant',
+      },
+      {
+        key: 'safemeds',
+        label: 'Use medicine safely',
+        message: 'Only take medicine when you truly need it today, and at the correct dose. It protects your liver.',
+        times: [{ hour: 9, minute: 30 }],
+        icon: 'pill',
+      },
+    ],
   };
 }
 
@@ -190,6 +504,16 @@ export function planFor(key: string, profile: HealthProfile | null): Recommendat
       return smokingPlan();
     case 'bp':
       return bloodPressurePlan();
+    case 'diabetes':
+      return diabetesPlan();
+    case 'hypertension':
+      return hypertensionPlan();
+    case 'stroke':
+      return strokePlan();
+    case 'kidney':
+      return kidneyPlan();
+    case 'liver':
+      return liverPlan();
     default:
       return null;
   }
