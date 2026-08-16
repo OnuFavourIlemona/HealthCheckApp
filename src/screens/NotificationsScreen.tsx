@@ -13,6 +13,7 @@ import {
   fetchNotifications,
   markAllAsRead,
   markAsRead,
+  notificationNavigateArgs,
   subscribeToNotifications,
   timeAgo,
   type AppNotification,
@@ -77,26 +78,8 @@ export function NotificationsScreen({ navigation }: Props) {
       markAsRead(item.id);
     }
 
-    const screen = item.data?.screen;
-    if (screen === 'ProConnect' && item.data?.consultationId) {
-      navigation.navigate('ProConnect', { consultationId: item.data.consultationId });
-    } else if (screen === 'ProTabs') {
-      navigation.navigate('ProTabs');
-    } else if (screen === 'PharmacyTabs') {
-      // Land straight on the Bookings tab with the right item highlighted,
-      // rather than the tab navigator's default (Dashboard) -- lab bookings
-      // and medicine holds live in different sections of that screen.
-      navigation.navigate('PharmacyTabs', {
-        screen: 'Bookings',
-        params: item.data?.reservationId
-          ? { reservationId: item.data.reservationId, section: 'holds' }
-          : { bookingId: item.data?.bookingId, section: 'labs' },
-      });
-    } else if (screen === 'MyLabBookings') {
-      navigation.navigate('MyLabBookings', { bookingId: item.data?.bookingId });
-    } else if (screen === 'MyMedicineHolds') {
-      navigation.navigate('MyMedicineHolds', { reservationId: item.data?.reservationId });
-    }
+    const args = notificationNavigateArgs(item.data);
+    if (args) (navigation.navigate as (...a: unknown[]) => void)(args[0], args[1]);
   };
 
   const handleMarkAll = async () => {

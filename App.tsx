@@ -15,6 +15,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { notificationNavigateArgs } from './src/lib/notifications';
 import { registerForPushNotifications } from './src/lib/pushNotifications';
 import { supabase } from './src/lib/supabase';
 import { RootNavigator } from './src/navigation/RootNavigator';
@@ -54,10 +55,13 @@ export default function App() {
 
     // Tapping a push notification opens the relevant screen when possible.
     const responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response.notification.request.content.data as { screen?: string } | undefined;
-      if (data?.screen && navigationRef.isReady()) {
+      const data = response.notification.request.content.data as
+        | { screen?: string; consultationId?: string; bookingId?: string; reservationId?: string }
+        | undefined;
+      const args = notificationNavigateArgs(data ?? null);
+      if (args && navigationRef.isReady()) {
         try {
-          navigationRef.navigate(data.screen as never);
+          (navigationRef.navigate as (...a: unknown[]) => void)(args[0], args[1]);
         } catch {
           // Unknown screen name — just leave the app on wherever it opened.
         }

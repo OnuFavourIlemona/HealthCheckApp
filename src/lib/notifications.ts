@@ -68,6 +68,50 @@ export function subscribeToNotifications(onChange: () => void): () => void {
   };
 }
 
+/**
+ * Turns a notification's `data` payload into a `navigation.navigate(...)`
+ * call. Shared by the in-app Notifications list and the OS push-tap handler
+ * in App.tsx, so both routes always agree on where a notification goes --
+ * this used to only live in the Notifications screen, so tapping a push
+ * notification from the OS tray (app closed or backgrounded) fell back to a
+ * bare `navigate(screen)` with no params and always landed on a tab
+ * navigator's default tab instead of the right one.
+ */
+export function notificationNavigateArgs(
+  data: AppNotification['data'],
+): [string, Record<string, unknown> | undefined] | null {
+  if (!data?.screen) return null;
+  const { screen, consultationId, bookingId, reservationId } = data;
+
+  if (screen === 'ProConnect' && consultationId) {
+    return ['ProConnect', { consultationId }];
+  }
+  if (screen === 'ProTabs') {
+    return ['ProTabs', undefined];
+  }
+  if (screen === 'PharmacyTabs') {
+    // Every notification that points here is either about a lab booking or a
+    // medicine hold, so land on the Bookings tab's matching section with the
+    // item highlighted, rather than the tab navigator's default (Dashboard).
+    return [
+      'PharmacyTabs',
+      {
+        screen: 'Bookings',
+        params: reservationId
+          ? { reservationId, section: 'holds' }
+          : { bookingId, section: 'labs' },
+      },
+    ];
+  }
+  if (screen === 'MyLabBookings') {
+    return ['MyLabBookings', { bookingId }];
+  }
+  if (screen === 'MyMedicineHolds') {
+    return ['MyMedicineHolds', { reservationId }];
+  }
+  return [screen, undefined];
+}
+
 export function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diffMs / 60000);

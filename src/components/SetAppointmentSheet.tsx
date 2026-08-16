@@ -1,5 +1,6 @@
+import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '../theme';
 
@@ -18,8 +19,29 @@ function defaultTime(): Date {
   return d;
 }
 
+function formatDate(d: Date): string {
+  return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+}
+
+function formatTime(d: Date): string {
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
 export function SetAppointmentSheet({ visible, submitting, error, onSubmit, onDismiss }: Props) {
   const [time, setTime] = useState<Date>(defaultTime());
+  // On Android, DateTimePicker is a native dialog that must be mounted only
+  // while it's meant to be open -- rendering both the date and time pickers
+  // unconditionally (as this used to) fires two overlapping dialogs at once
+  // with no way to close either, which is the "stuck" bug. iOS renders it
+  // inline instead, so it can just stay mounted the whole time.
+  const [androidStep, setAndroidStep] = useState<'closed' | 'date' | 'time'>('closed');
+
+  useEffect(() => {
+    if (visible) {
+      setTime(defaultTime());
+      setAndroidStep('closed');
+    }
+  }, [visible]);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onDismiss}>
@@ -31,28 +53,59 @@ export function SetAppointmentSheet({ visible, submitting, error, onSubmit, onDi
             Pick a time the patient can walk in. They will see it and can set their own reminder.
           </Text>
 
-          <View style={styles.pickerWrap}>
+          {Platform.OS === 'android' ? (
+            <View style={styles.androidRow}>
+              <Pressable style={styles.dateButton} onPress={() => setAndroidStep('date')}>
+                <Ionicons name="calendar-outline" size={16} color={colors.darkAccentGreen} />
+                <Text style={styles.dateButtonText}>{formatDate(time)}</Text>
+              </Pressable>
+              <Pressable style={styles.dateButton} onPress={() => setAndroidStep('time')}>
+                <Ionicons name="time-outline" size={16} color={colors.darkAccentGreen} />
+                <Text style={styles.dateButtonText}>{formatTime(time)}</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.pickerWrap}>
+              <DateTimePicker
+                value={time}
+                mode="datetime"
+                display="spinner"
+                minimumDate={new Date()}
+                onChange={(_event, selected) => {
+                  if (selected) setTime(selected);
+                }}
+              />
+            </View>
+          )}
+
+          {Platform.OS === 'android' && androidStep === 'date' ? (
             <DateTimePicker
               value={time}
-              mode={Platform.OS === 'ios' ? 'datetime' : 'date'}
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              mode="date"
+              display="default"
               minimumDate={new Date()}
               onChange={(_event, selected) => {
-                if (selected) setTime(selected);
+                setAndroidStep('closed');
+                if (selected) {
+                  const merged = new Date(time);
+                  merged.setFullYear(selected.getFullYear(), selected.getMonth(), selected.getDate());
+                  setTime(merged);
+                }
               }}
             />
-          </View>
+          ) : null}
 
-          {Platform.OS === 'android' ? (
+          {Platform.OS === 'android' && androidStep === 'time' ? (
             <DateTimePicker
               value={time}
               mode="time"
               display="default"
               onChange={(_event, selected) => {
+                setAndroidStep('closed');
                 if (selected) {
-                  const combined = new Date(time);
-                  combined.setHours(selected.getHours(), selected.getMinutes());
-                  setTime(combined);
+                  const merged = new Date(time);
+                  merged.setHours(selected.getHours(), selected.getMinutes());
+                  setTime(merged);
                 }
               }}
             />
@@ -116,6 +169,27 @@ const styles = StyleSheet.create({
   pickerWrap: {
     alignItems: 'center',
     marginTop: 14,
+  },
+  androidRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  dateButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingVertical: 13,
+  },
+  dateButtonText: {
+    fontFamily: fonts.headingSemiBold,
+    fontSize: 14,
+    color: colors.textPrimary,
   },
   errorText: {
     fontFamily: fonts.bodySemiBold,

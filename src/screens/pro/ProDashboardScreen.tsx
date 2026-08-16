@@ -183,7 +183,7 @@ export function ProDashboardScreen() {
               fill
             />
           </Tappable>
-          <Tappable style={{ width: statTileWidth }} onPress={() => navigation.navigate('Schedule')}>
+          <Tappable style={{ width: statTileWidth }} onPress={() => navigation.navigate('Patients')}>
             <StatTile label="Active Chats" value={String(stats.activeConsultations)} tinted fill />
           </Tappable>
           <Tappable style={{ width: statTileWidth }} onPress={() => navigation.navigate('Patients')}>
