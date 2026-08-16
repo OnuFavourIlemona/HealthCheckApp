@@ -4,6 +4,7 @@ import type { ComponentProps } from 'react';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Avatar } from '../components/ui/Avatar';
 import { BounceIn } from '../components/ui/BounceIn';
 import { FadeInUp } from '../components/ui/FadeInUp';
 import { PatternBackground } from '../components/ui/PatternBackground';
@@ -135,15 +136,24 @@ export function NotificationsScreen({ navigation }: Props) {
           {items.map((item, index) => {
             const icon = TYPE_ICONS[item.type] ?? FALLBACK_ICON;
             const unread = item.read_at == null;
+            // Notifications that are really "from a specific person" (a chat
+            // message, a new patient request, a practitioner accepting one)
+            // show that person's photo or initials instead of a generic icon,
+            // so it's recognisable at a glance among a list of notifications.
+            const fromPerson = item.data?.senderName || item.data?.senderAvatarUrl;
             return (
               <FadeInUp key={item.id} index={index}>
                 <Tappable
                   style={[styles.card, unread && styles.cardUnread]}
                   onPress={() => handleOpen(item)}
                 >
-                  <View style={[styles.icon, { backgroundColor: icon.bg }]}>
-                    <MaterialCommunityIcons name={icon.name} size={20} color={icon.color} />
-                  </View>
+                  {fromPerson ? (
+                    <Avatar name={item.data?.senderName} avatarUrl={item.data?.senderAvatarUrl} size={44} />
+                  ) : (
+                    <View style={[styles.icon, { backgroundColor: icon.bg }]}>
+                      <MaterialCommunityIcons name={icon.name} size={20} color={icon.color} />
+                    </View>
+                  )}
                   <View style={styles.body}>
                     <Text style={[styles.title, unread && styles.titleUnread]} numberOfLines={1}>
                       {item.title}

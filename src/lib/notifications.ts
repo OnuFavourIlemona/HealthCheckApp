@@ -5,7 +5,14 @@ export type AppNotification = {
   type: string;
   title: string;
   body: string | null;
-  data: { screen?: string; consultationId?: string; bookingId?: string; reservationId?: string } | null;
+  data: {
+    screen?: string;
+    consultationId?: string;
+    bookingId?: string;
+    reservationId?: string;
+    senderName?: string;
+    senderAvatarUrl?: string;
+  } | null;
   read_at: string | null;
   created_at: string;
 };
