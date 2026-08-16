@@ -7,7 +7,14 @@ import { BounceIn } from '../../components/ui/BounceIn';
 import { PatternBackground } from '../../components/ui/PatternBackground';
 import type { Consultation } from '../../lib/consultations';
 import { friendlyError } from '../../lib/errors';
-import { acceptSeconds, computeConsultPayout, formatNaira, tierFor } from '../../lib/proStats';
+import {
+  acceptSeconds,
+  computeConsultPayout,
+  formatNaira,
+  payoutState,
+  tierFor,
+  type PayoutLedgerRow,
+} from '../../lib/proStats';
 import { supabase } from '../../lib/supabase';
 import {
   fetchBankAccount,
@@ -20,8 +27,17 @@ import {
 } from '../../lib/withdrawals';
 import { colors, fonts } from '../../theme';
 
+type ConsultationWithLedger = Consultation & {
+  practitioner_payouts?: PayoutLedgerRow | PayoutLedgerRow[];
+};
+
+function ledgerOf(c: ConsultationWithLedger): PayoutLedgerRow {
+  const raw = c.practitioner_payouts;
+  return Array.isArray(raw) ? (raw[0] ?? null) : (raw ?? null);
+}
+
 export function ProPaymentsScreen() {
-  const [completed, setCompleted] = useState<Consultation[]>([]);
+  const [completed, setCompleted] = useState<ConsultationWithLedger[]>([]);
   const [ratingByConsultation, setRatingByConsultation] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
 
@@ -45,7 +61,7 @@ export function ProPaymentsScreen() {
     const [{ data: consultations }, { data: ratings }] = await Promise.all([
       supabase
         .from('consultations')
-        .select('*')
+        .select('*, practitioner_payouts(engagement_passed, flagged, available_at)')
         .eq('professional_id', userId)
         .eq('status', 'completed')
         .order('updated_at', { ascending: false }),
@@ -54,7 +70,7 @@ export function ProPaymentsScreen() {
         .select('consultation_id, rating')
         .eq('professional_id', userId),
     ]);
-    setCompleted((consultations ?? []) as Consultation[]);
+    setCompleted((consultations ?? []) as ConsultationWithLedger[]);
     setRatingByConsultation(
       new Map((ratings ?? []).map((r) => [r.consultation_id as string, r.rating as number])),
     );
@@ -80,22 +96,27 @@ export function ProPaymentsScreen() {
   );
 
   const tier = tierFor(completed.length);
-  const earned = completed.reduce(
-    (sum, c) =>
-      sum +
-      computeConsultPayout(
-        ratingByConsultation.get(c.id) ?? null,
-        acceptSeconds(c.created_at, c.accepted_at),
-        tier.name,
-      ),
-    0,
-  );
+  // Shown to the practitioner as their earnings, full stop.
+  let earned = 0;
+  // Never shown or labelled -- silently caps what a withdrawal request can
+  // actually pull. A consult that hasn't cleared engagement/escrow checks
+  // still counts toward "earned" above, just not toward this.
+  let withdrawable = 0;
+  for (const c of completed) {
+    const amount = computeConsultPayout(
+      ratingByConsultation.get(c.id) ?? null,
+      acceptSeconds(c.created_at, c.accepted_at),
+      tier.name,
+    );
+    earned += amount;
+    if (payoutState(ledgerOf(c)) === 'available') withdrawable += amount;
+  }
 
   // Anything already requested (pending or paid) is no longer available.
   const alreadyRequested = withdrawals
     .filter((w) => w.status !== 'rejected')
     .reduce((sum, w) => sum + w.amount, 0);
-  const available = Math.max(0, earned - alreadyRequested);
+  const available = Math.max(0, withdrawable - alreadyRequested);
   const windowOpen = isWithdrawalWindowOpen();
 
   const handleSaveBank = async () => {

@@ -2,7 +2,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useFocusEffect, useNavigation, type CompositeNavigationProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
@@ -63,6 +63,10 @@ export function ProDashboardScreen() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [stats, setStats] = useState<ProStats>(EMPTY_PRO_STATS);
   const [unreadCount, setUnreadCount] = useState(0);
+  // A ref, not just the acceptingId state: the state guard wasn't set until
+  // after an await (the NIN check), leaving a window where a second tap
+  // could slip through before the first render even reflected the lock.
+  const acceptingRef = useRef<string | null>(null);
 
   const loadRequests = useCallback(async () => {
     const pending = await fetchPendingRequests();
@@ -111,18 +115,21 @@ export function ProDashboardScreen() {
   useEffect(() => subscribeToNotifications(loadUnread), [loadUnread]);
 
   const handleAccept = async (id: string) => {
-    if (acceptingId) return;
+    if (acceptingRef.current) return;
+    acceptingRef.current = id;
     setAcceptError(null);
 
     // A practitioner must have their own NIN on file before taking a patient,
     // so both sides are accountable if a consultation is ever disputed.
     if (!(await hasProvidedNin())) {
+      acceptingRef.current = null;
       navigation.navigate('VerifyNin');
       return;
     }
 
     setAcceptingId(id);
     const { consultation, error } = await acceptConsultation(id);
+    acceptingRef.current = null;
     setAcceptingId(null);
 
     if (error || !consultation) {
@@ -184,7 +191,7 @@ export function ProDashboardScreen() {
             />
           </Tappable>
           <Tappable style={{ width: statTileWidth }} onPress={() => navigation.navigate('Patients')}>
-            <StatTile label="Active Chats" value={String(stats.activeConsultations)} tinted fill />
+            <StatTile label="Active Consultations" value={String(stats.activeConsultations)} tinted fill />
           </Tappable>
           <Tappable style={{ width: statTileWidth }} onPress={() => navigation.navigate('Patients')}>
             <StatTile label="Completed" value={String(stats.completedConsultations)} tinted fill />

@@ -1,7 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -105,6 +105,10 @@ export function PharmacyBookingsScreen({ route }: Props) {
   const [schedulingBooking, setSchedulingBooking] = useState<PharmacyBooking | null>(null);
   const [schedulingSubmitting, setSchedulingSubmitting] = useState(false);
   const [schedulingError, setSchedulingError] = useState<string | null>(null);
+  // A ref, not just the busyId state: state set inside a handler doesn't
+  // take effect until the next render, so a fast double-tap can fire the
+  // same action twice before `busyId` would have blocked the second one.
+  const busyRef = useRef<string | null>(null);
 
   // A notification can point at a booking that isn't 'pending' (e.g. the
   // patient just sent their address for an already-accepted one), so make
@@ -152,7 +156,8 @@ export function PharmacyBookingsScreen({ route }: Props) {
   const pendingHolds = reservations.filter((r) => r.status === 'pending').length;
 
   const act = async (booking: PharmacyBooking, status: Exclude<PharmacyBookingStatus, 'pending'>) => {
-    if (busyId) return;
+    if (busyRef.current) return;
+    busyRef.current = booking.id;
     setBusyId(booking.id);
     setError(null);
     // Optimistic update so the UI feels instant.
@@ -165,11 +170,13 @@ export function PharmacyBookingsScreen({ route }: Props) {
     } else {
       successHaptic();
     }
+    busyRef.current = null;
     setBusyId(null);
   };
 
   const requestAddress = async (booking: PharmacyBooking) => {
-    if (busyId) return;
+    if (busyRef.current) return;
+    busyRef.current = booking.id;
     setBusyId(booking.id);
     setError(null);
     const previous = bookings;
@@ -183,6 +190,7 @@ export function PharmacyBookingsScreen({ route }: Props) {
       setBookings(previous);
       setError(err ?? 'Could not send that request. Please try again.');
     }
+    busyRef.current = null;
     setBusyId(null);
   };
 
@@ -208,7 +216,8 @@ export function PharmacyBookingsScreen({ route }: Props) {
     reservation: PharmacyReservation,
     status: Exclude<ReservationStatus, 'pending'>,
   ) => {
-    if (busyId) return;
+    if (busyRef.current) return;
+    busyRef.current = reservation.id;
     setBusyId(reservation.id);
     setError(null);
     const previous = reservations;
@@ -220,6 +229,7 @@ export function PharmacyBookingsScreen({ route }: Props) {
     } else {
       successHaptic();
     }
+    busyRef.current = null;
     setBusyId(null);
   };
 

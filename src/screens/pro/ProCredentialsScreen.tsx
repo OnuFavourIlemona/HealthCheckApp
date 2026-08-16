@@ -19,6 +19,7 @@ import { PatternBackground } from '../../components/ui/PatternBackground';
 import { ageFromDob, dobPartsFromIso, dobToIso, parseDob } from '../../lib/dateOfBirth';
 import { friendlyError } from '../../lib/errors';
 import { supabase } from '../../lib/supabase';
+import { clearBirthdayReminder } from '../../lib/wellnessReminders';
 import type { RootStackParamList } from '../../navigation/types';
 import { colors, fonts } from '../../theme';
 
@@ -234,6 +235,9 @@ export function ProCredentialsScreen({ navigation }: Props) {
       setMessage({ kind: 'error', text: friendlyError(error) });
       return;
     }
+    // A changed date of birth means any already-armed birthday alarm is now
+    // on the wrong date -- clear it so it re-arms correctly next app open.
+    void clearBirthdayReminder();
     setSubmittedAt(now);
     setMessage({ kind: 'success', text: 'Sent for review.' });
   };

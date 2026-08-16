@@ -494,6 +494,22 @@ function liverPlan(): RecommendationPlan {
   };
 }
 
+/**
+ * A general wellness nudge, not tied to any one condition or risk result --
+ * shown in the Reminders screen alongside the condition-based ones, but
+ * doesn't have a full recommendation detail page behind it.
+ */
+export const CHECKUP_REMINDER: PlanReminder = {
+  key: 'monthly',
+  label: 'Check your numbers this month',
+  message:
+    'Try to check your blood pressure and blood sugar this month, then update them in your Health Info. It keeps your risk checks accurate and can catch problems early.',
+  times: [{ hour: 10, minute: 0 }],
+  icon: 'clipboard-pulse-outline',
+  cadence: 'monthly',
+  monthlyDay: 1,
+};
+
 export function planFor(key: string, profile: HealthProfile | null): RecommendationPlan | null {
   switch (key) {
     case 'sleep':

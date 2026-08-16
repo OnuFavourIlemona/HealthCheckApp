@@ -105,6 +105,68 @@ export async function scheduleDailyReminder(
   }
 }
 
+/**
+ * Schedules a reminder that repeats every month on the given day. Used for
+ * the general "check your numbers" nudge, which doesn't fit the daily
+ * health-habit reminders.
+ */
+export async function scheduleMonthlyReminder(
+  title: string,
+  body: string | undefined,
+  day: number,
+  hour: number,
+  minute: number,
+): Promise<string | null> {
+  try {
+    const granted = await requestReminderPermission();
+    if (!granted) return null;
+    await ensureAndroidChannel();
+
+    return await Notifications.scheduleNotificationAsync({
+      content: { title, body, sound: 'default' },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.MONTHLY,
+        day,
+        hour,
+        minute,
+        channelId: Platform.OS === 'android' ? 'reminders' : undefined,
+      },
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Schedules a reminder that repeats every year on the given day/month -- used for birthdays. */
+export async function scheduleYearlyReminder(
+  title: string,
+  body: string | undefined,
+  day: number,
+  month: number,
+  hour: number,
+  minute: number,
+): Promise<string | null> {
+  try {
+    const granted = await requestReminderPermission();
+    if (!granted) return null;
+    await ensureAndroidChannel();
+
+    return await Notifications.scheduleNotificationAsync({
+      content: { title, body, sound: 'default' },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.YEARLY,
+        day,
+        month,
+        hour,
+        minute,
+        channelId: Platform.OS === 'android' ? 'reminders' : undefined,
+      },
+    });
+  } catch {
+    return null;
+  }
+}
+
 export async function cancelReminderNotification(notificationId: string | null): Promise<void> {
   if (!notificationId) return;
   try {

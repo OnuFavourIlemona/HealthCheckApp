@@ -150,6 +150,10 @@ function AudioBubble({
 export function ProConnectScreen({ navigation, route }: Props) {
   const consultationId = route.params?.consultationId;
   const scrollRef = useRef<ScrollView>(null);
+  // A ref, not state: state set inside an event handler doesn't take effect
+  // until the next render, so a fast double-tap on Send can fire twice
+  // before the `sending` state flag would have caught the second one.
+  const sendingRef = useRef(false);
   const [consultation, setConsultation] = useState<Consultation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState('');
@@ -274,10 +278,12 @@ export function ProConnectScreen({ navigation, route }: Props) {
 
   const handleSend = async () => {
     const body = draft.trim();
-    if (!body || !consultationId || sending) return;
+    if (!body || !consultationId || sendingRef.current) return;
+    sendingRef.current = true;
     setDraft('');
     setSending(true);
     const { error } = await sendMessage(consultationId, body);
+    sendingRef.current = false;
     setSending(false);
     if (error) setDraft(body); // restore so the text isn't lost
   };

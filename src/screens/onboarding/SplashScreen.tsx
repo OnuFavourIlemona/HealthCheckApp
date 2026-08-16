@@ -6,6 +6,7 @@ import { registerForPushNotifications } from '../../lib/pushNotifications';
 import { rescheduleAllHealthReminders } from '../../lib/healthReminders';
 import { refreshPeriodReminders } from '../../lib/periodTracker';
 import { autoEnableRelevantReminders } from '../../lib/autoReminders';
+import { ensureBirthdayReminder } from '../../lib/wellnessReminders';
 import { getSessionRole } from '../../lib/supabase';
 import type { RootStackParamList } from '../../navigation/types';
 
@@ -33,6 +34,7 @@ export function SplashScreen({ navigation }: Props) {
         void rescheduleAllHealthReminders();
         void refreshPeriodReminders();
         void autoEnableRelevantReminders();
+        void ensureBirthdayReminder();
       }
 
       // Returning-but-logged-out users skip the onboarding carousel and go

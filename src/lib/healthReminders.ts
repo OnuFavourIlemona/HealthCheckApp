@@ -2,6 +2,7 @@ import {
   cancelReminderNotification,
   getScheduledNotificationIds,
   scheduleDailyReminder,
+  scheduleMonthlyReminder,
 } from './reminderNotifications';
 import { supabase } from './supabase';
 
@@ -24,9 +25,13 @@ export type PlanReminder = {
   label: string;
   /** The friendly nudge shown in the notification body. */
   message: string;
-  /** One or more times a day to fire. */
+  /** One or more times a day to fire (or, for 'monthly', just one time-of-day). */
   times: ReminderTime[];
   icon: string;
+  /** Defaults to 'daily'. 'monthly' fires once a month on `monthlyDay` instead. */
+  cadence?: 'daily' | 'monthly';
+  /** Day of month (1-31) to fire on -- only used when cadence is 'monthly'. */
+  monthlyDay?: number;
 };
 
 export type HealthReminderRow = {
@@ -36,21 +41,32 @@ export type HealthReminderRow = {
   message: string;
   times: ReminderTime[];
   notification_ids: string[];
+  cadence: 'daily' | 'monthly';
+  monthly_day: number | null;
 };
 
 export async function fetchHealthReminders(planKey?: string): Promise<HealthReminderRow[]> {
   let query = supabase
     .from('health_reminders')
-    .select('id, plan_key, reminder_key, message, times, notification_ids');
+    .select('id, plan_key, reminder_key, message, times, notification_ids, cadence, monthly_day');
   if (planKey) query = query.eq('plan_key', planKey);
   const { data } = await query;
   return (data as HealthReminderRow[]) ?? [];
 }
 
-async function scheduleAll(label: string, message: string, times: ReminderTime[]): Promise<string[]> {
+async function scheduleAll(
+  label: string,
+  message: string,
+  times: ReminderTime[],
+  cadence: 'daily' | 'monthly' = 'daily',
+  monthlyDay: number | null = null,
+): Promise<string[]> {
   const ids: string[] = [];
   for (const t of times) {
-    const id = await scheduleDailyReminder(label, message, t.hour, t.minute);
+    const id =
+      cadence === 'monthly' && monthlyDay != null
+        ? await scheduleMonthlyReminder(label, message, monthlyDay, t.hour, t.minute)
+        : await scheduleDailyReminder(label, message, t.hour, t.minute);
     if (id) ids.push(id);
   }
   return ids;
@@ -79,7 +95,14 @@ export async function enableHealthReminder(
     );
   }
 
-  const notificationIds = await scheduleAll(reminder.label, reminder.message, reminder.times);
+  const cadence = reminder.cadence ?? 'daily';
+  const notificationIds = await scheduleAll(
+    reminder.label,
+    reminder.message,
+    reminder.times,
+    cadence,
+    reminder.monthlyDay ?? null,
+  );
 
   const { data, error } = await supabase
     .from('health_reminders')
@@ -91,10 +114,12 @@ export async function enableHealthReminder(
         message: reminder.message,
         times: reminder.times,
         notification_ids: notificationIds,
+        cadence,
+        monthly_day: reminder.monthlyDay ?? null,
       },
       { onConflict: 'user_id,plan_key,reminder_key' },
     )
-    .select('id, plan_key, reminder_key, message, times, notification_ids')
+    .select('id, plan_key, reminder_key, message, times, notification_ids, cadence, monthly_day')
     .single();
 
   if (error) {
@@ -133,7 +158,7 @@ export async function rescheduleAllHealthReminders(): Promise<void> {
 
         await Promise.all(ids.map((id) => cancelReminderNotification(id)));
         const label = row.message.split('?')[0].slice(0, 40) || 'HealthCheck reminder';
-        const newIds = await scheduleAll(label, row.message, row.times ?? []);
+        const newIds = await scheduleAll(label, row.message, row.times ?? [], row.cadence, row.monthly_day);
         await supabase.from('health_reminders').update({ notification_ids: newIds }).eq('id', row.id);
       }
     } finally {

@@ -20,6 +20,7 @@ import { registerForPushNotifications } from '../../lib/pushNotifications';
 import { rescheduleAllHealthReminders } from '../../lib/healthReminders';
 import { refreshPeriodReminders } from '../../lib/periodTracker';
 import { autoEnableRelevantReminders } from '../../lib/autoReminders';
+import { ensureBirthdayReminder } from '../../lib/wellnessReminders';
 import { getSessionRole, supabase } from '../../lib/supabase';
 import type { RootStackParamList } from '../../navigation/types';
 import { colors, fonts } from '../../theme';
@@ -80,6 +81,7 @@ export function LoginScreen({ navigation }: Props) {
     void rescheduleAllHealthReminders();
     void refreshPeriodReminders();
     void autoEnableRelevantReminders();
+    void ensureBirthdayReminder();
     setSubmitting(false);
     const destination =
       role === 'pharmacy' ? 'PharmacyTabs' : role === 'patient' ? 'MainTabs' : 'ProTabs';

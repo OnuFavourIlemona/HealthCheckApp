@@ -6,13 +6,43 @@ export type ProStats = {
   completedConsultations: number;
   averageRating: number | null;
   ratingCount: number;
-  /** Naira earned, summed across every completed consultation -- each one priced by its own rating. */
+  /** Estimated Naira earned, summed across every completed consultation -- shown to the practitioner as-is. */
   earnings: number;
+  /**
+   * Naira actually clear to withdraw right now (engagement-passed, past
+   * escrow, not flagged). Deliberately never shown or labelled anywhere --
+   * used only to silently cap what a withdrawal request can pull. The UI
+   * only ever shows the one "earnings" figure above; this fraud-prevention
+   * layer stays entirely invisible to the practitioner.
+   */
+  withdrawableEarnings: number;
   /** Consultations accepted per day over the last 14 days, oldest first. */
   dailyCounts: number[];
   /** Ratings received, chronological. */
   ratingTrend: number[];
 };
+
+/** A payout ledger row as read back from Postgres (see practitioner_payouts). */
+export type PayoutLedgerRow = {
+  engagement_passed: boolean;
+  flagged: boolean;
+  available_at: string | null;
+} | null;
+
+/**
+ * Collapses the ledger row into whether this consultation's payout is
+ * actually clear to withdraw right now. Never surfaced in the UI -- used only
+ * to compute the real withdrawable balance behind the scenes. A missing row
+ * (shouldn't happen post-migration, but just in case) is treated as
+ * available rather than silently zeroing out real earnings.
+ */
+export function payoutState(row: PayoutLedgerRow): 'available' | 'pending' | 'ineligible' {
+  if (!row) return 'available';
+  if (!row.engagement_passed) return 'ineligible';
+  if (row.flagged) return 'pending';
+  if (!row.available_at || new Date(row.available_at) > new Date()) return 'pending';
+  return 'available';
+}
 
 const TREND_DAYS = 14;
 
@@ -23,6 +53,7 @@ export const EMPTY_PRO_STATS: ProStats = {
   averageRating: null,
   ratingCount: 0,
   earnings: 0,
+  withdrawableEarnings: 0,
   dailyCounts: Array(TREND_DAYS).fill(0),
   ratingTrend: [],
 };
@@ -108,7 +139,7 @@ export async function fetchProStats(): Promise<ProStats> {
   const [{ data: consultations }, { data: ratings }] = await Promise.all([
     supabase
       .from('consultations')
-      .select('id, patient_id, status, accepted_at, created_at')
+      .select('id, patient_id, status, accepted_at, created_at, practitioner_payouts(engagement_passed, flagged, available_at)')
       .eq('professional_id', userId),
     supabase
       .from('consultation_ratings')
@@ -132,20 +163,28 @@ export async function fetchProStats(): Promise<ProStats> {
       : null;
 
   const tierName = tierFor(completedRows.length).name;
-  const earnings = completedRows.reduce((sum, c) => {
+  let earnings = 0;
+  let withdrawableEarnings = 0;
+  for (const c of completedRows) {
     const rating = ratingByConsultation.get(c.id as string) ?? null;
     const secs = acceptSeconds(
       (c.created_at as string) ?? null,
       (c.accepted_at as string | null) ?? null,
     );
-    return sum + computeConsultPayout(rating, secs, tierName);
-  }, 0);
+    const amount = computeConsultPayout(rating, secs, tierName);
+    earnings += amount;
+    const ledgerRaw = (c as { practitioner_payouts?: PayoutLedgerRow | PayoutLedgerRow[] })
+      .practitioner_payouts;
+    const ledger = Array.isArray(ledgerRaw) ? (ledgerRaw[0] ?? null) : (ledgerRaw ?? null);
+    if (payoutState(ledger) === 'available') withdrawableEarnings += amount;
+  }
 
   return {
     patientsAttended: uniquePatients.size,
     activeConsultations: active,
     completedConsultations: completedRows.length,
     averageRating,
+    withdrawableEarnings,
     ratingCount: ratingRows.length,
     earnings,
     dailyCounts: dailyBuckets(

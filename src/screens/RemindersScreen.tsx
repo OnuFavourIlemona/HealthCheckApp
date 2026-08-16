@@ -13,7 +13,7 @@ import {
   type HealthReminderRow,
   type PlanReminder,
 } from '../lib/healthReminders';
-import { planFor } from '../lib/recommendationPlans';
+import { CHECKUP_REMINDER, planFor } from '../lib/recommendationPlans';
 import { getReminderPermissionStatus } from '../lib/reminderNotifications';
 import type { RootStackParamList } from '../navigation/types';
 import { colors, fonts } from '../theme';
@@ -22,8 +22,11 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Reminders'>;
 type MCIName = ComponentProps<typeof MaterialCommunityIcons>['name'];
 
 // The reminders a patient can manage, grouped by area. Factor-only plans (bp,
-// weight, smoking) are left out to avoid duplicate entries.
+// weight, smoking) are left out to avoid duplicate entries. 'checkup' isn't a
+// condition plan -- it's pulled straight from CHECKUP_REMINDER below instead
+// of planFor().
 const CATALOG: { planKey: string; title: string }[] = [
+  { planKey: 'checkup', title: 'General health' },
   { planKey: 'sleep', title: 'Sleep' },
   { planKey: 'diabetes', title: 'Diabetes' },
   { planKey: 'hypertension', title: 'Blood pressure' },
@@ -32,14 +35,15 @@ const CATALOG: { planKey: string; title: string }[] = [
   { planKey: 'liver', title: 'Liver' },
 ];
 
-function formatTimes(times: { hour: number; minute: number }[]): string {
-  return times
+function formatTimes(times: { hour: number; minute: number }[], cadence?: 'daily' | 'monthly'): string {
+  const formatted = times
     .map((t) => {
       const h12 = t.hour % 12 === 0 ? 12 : t.hour % 12;
       const ampm = t.hour < 12 ? 'am' : 'pm';
       return `${h12}:${t.minute.toString().padStart(2, '0')}${ampm}`;
     })
     .join(' and ');
+  return cadence === 'monthly' ? `${formatted}, once a month` : formatted;
 }
 
 export function RemindersScreen({ navigation }: Props) {
@@ -116,8 +120,8 @@ export function RemindersScreen({ navigation }: Props) {
           ) : null}
 
           {CATALOG.map((group) => {
-            const plan = planFor(group.planKey, null);
-            const reminders = plan?.reminders ?? [];
+            const reminders =
+              group.planKey === 'checkup' ? [CHECKUP_REMINDER] : (planFor(group.planKey, null)?.reminders ?? []);
             if (reminders.length === 0) return null;
             return (
               <View key={group.planKey} style={styles.group}>
@@ -142,7 +146,9 @@ export function RemindersScreen({ navigation }: Props) {
                           <Text style={styles.rowLabel}>{reminder.label}</Text>
                           <Text style={styles.rowMessage}>{reminder.message}</Text>
                           <Text style={styles.rowTime}>
-                            {on ? `On, at ${formatTimes(reminder.times)}` : `Suggested for ${formatTimes(reminder.times)}`}
+                            {on
+                              ? `On, at ${formatTimes(reminder.times, reminder.cadence)}`
+                              : `Suggested for ${formatTimes(reminder.times, reminder.cadence)}`}
                           </Text>
                         </View>
                         <Switch

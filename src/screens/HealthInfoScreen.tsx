@@ -19,6 +19,7 @@ import { ageFromDob, dobPartsFromIso, dobToIso, parseDob } from '../lib/dateOfBi
 import { friendlyError } from '../lib/errors';
 import { NIDRS_FOODS, type FoodFrequency } from '../lib/nidrs';
 import { supabase } from '../lib/supabase';
+import { clearBirthdayReminder } from '../lib/wellnessReminders';
 import type { RootStackParamList } from '../navigation/types';
 import { colors, fonts } from '../theme';
 
@@ -313,6 +314,9 @@ export function HealthInfoScreen({ navigation }: Props) {
       setMessage({ kind: 'error', text: friendlyError(error) });
       return;
     }
+    // A changed date of birth means any already-armed birthday alarm is now
+    // on the wrong date -- clear it so it re-arms correctly next app open.
+    void clearBirthdayReminder();
     setMessage({ kind: 'success', text: 'Health info saved.' });
     setTimeout(() => navigation.goBack(), 700);
   };

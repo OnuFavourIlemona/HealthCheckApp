@@ -146,6 +146,66 @@ If the economics need to change (higher fee, lower commission, bigger bonus),
 change the number here and the dashboard, the payments screen, and the earnings
 total all move together.
 
+## Fraud protection
+
+Per-consult money is an obvious target for gaming: a practitioner could
+accept a request and end it immediately with no real care, or a practitioner
+and a patient could collude to farm trivial back-and-forth consults for a
+share of the payout. Two layers guard against this, implemented entirely in
+`complete_consultation()` and a new `practitioner_payouts` ledger table.
+**This entire system is invisible to the practitioner.** The Payments screen
+shows exactly what it always showed — an estimated "Earned to date" figure
+and an "Available to withdraw" figure — with no new labels, badges, or
+explanations. Only the number behind "Available to withdraw" is now silently
+capped by these checks; "Earned to date" still shows the full estimated
+payout regardless. A practitioner has no way to tell, from the app, that any
+of this is happening.
+
+**Layer 1 — minimum engagement gate.** A completed consultation only earns a
+stipend if it shows real back-and-forth: at least 3 messages from *each*
+side, at least 2 minutes between accept and completion, and either 150+
+characters of combined message text or an actual photo/voice note exchanged.
+Fails any of these → the consult still completes normally for the patient,
+it just earns nothing. This kills instant accept-and-end farming outright,
+since faking a real conversation that fast isn't practical.
+
+**Layer 2 — escrow with pattern detection.** A consult that clears Layer 1
+doesn't pay out immediately — it sits in a 48-hour escrow window before
+becoming withdrawable. During that window, two aggregate signals (invisible
+to any single consultation) can flag it for review instead of releasing it
+automatically:
+- **Velocity:** 6+ engagement-passing consults by the same practitioner
+  within a rolling hour (no human can genuinely give 6 real consults that
+  fast).
+- **Repeat pairing:** the same patient and practitioner completing 3+
+  consults with each other within 24 hours (the collusion pattern —
+  one patient repeatedly "booking" the same practitioner for quick payouts).
+
+Flagged consults are held exactly the same way as unreleased escrow, both
+just silently excluded from the withdrawable total — there is no separate
+"flagged" state visible anywhere, so there's no way to tell the two apart
+from outside the database.
+
+**Grandfathering:** consultations completed before this system existed were
+backfilled as already-available, so nobody's already-earned money vanished
+when this shipped.
+
+**Deliberately not built yet (documented so it isn't forgotten, not because
+it's unimportant):**
+- A daily cap on payable consults, to bound worst-case damage regardless of
+  how someone gets past Layers 1–2.
+- Light random admin review of transcripts, paired with a real consequence
+  (clawback + deverification) for confirmed farming — practitioners are
+  already identity-verified via NIN + licence, so this is a stronger
+  deterrent than any algorithm, and it's the only layer that can catch a
+  practitioner who gives real patients genuinely poor, rushed care without
+  triggering any of the above (that's a care-quality problem, not a
+  money-farming one, and no engagement metric can see the difference from
+  the outside).
+- Identity/device correlation across "different" patient and practitioner
+  accounts, for organised collusion rings. Shelved until real usage shows
+  Layers 1–2 aren't enough — no sense building it blind.
+
 ## Honest caveats
 
 - These figures assume the patient fee is actually collected. Payment
